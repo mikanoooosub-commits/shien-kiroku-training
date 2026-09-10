@@ -1,0 +1,310 @@
+<title>AI記録支援 システム構成</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F3F6F6; --raised:#FFFFFF; --sunken:#E9EFEE;
+    --ink:#1A2226; --ink-soft:#47555A; --ink-faint:#7B8A8E;
+    --rule:#D7DEDD; --rule-strong:#BFCBC9;
+    --accent:#1F6F64; --accent-ink:#0F4C44; --accent-soft:#DCEDE9;
+    --ext:#A8631E; --ext-soft:#F6E7D5; --ext-ink:#6B4413;
+    --guard:#A8322A; --guard-soft:#F7E2DF;
+    --sans:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",sans-serif;
+    --serif:"Zen Old Mincho","Hiragino Mincho ProN",serif;
+    --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10181A; --raised:#182325; --sunken:#0C1315;
+      --ink:#E6EDEC; --ink-soft:#AEC0BE; --ink-faint:#7C908E;
+      --rule:#2A3A3B; --rule-strong:#3D5153;
+      --accent:#56C3B2; --accent-ink:#8FDCCF; --accent-soft:#1C3733;
+      --ext:#E0A75E; --ext-soft:#33280F; --ext-ink:#F0C687;
+      --guard:#E58B80; --guard-soft:#3B211F;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10181A; --raised:#182325; --sunken:#0C1315;
+    --ink:#E6EDEC; --ink-soft:#AEC0BE; --ink-faint:#7C908E;
+    --rule:#2A3A3B; --rule-strong:#3D5153;
+    --accent:#56C3B2; --accent-ink:#8FDCCF; --accent-soft:#1C3733;
+    --ext:#E0A75E; --ext-soft:#33280F; --ext-ink:#F0C687;
+    --guard:#E58B80; --guard-soft:#3B211F;
+  }
+  *{box-sizing:border-box;}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.85;font-size:15px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:44px 24px 80px;display:flex;flex-direction:column;gap:44px;}
+
+  header{display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--rule);padding-bottom:26px;}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);margin:0;}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(25px,3.6vw,34px);line-height:1.3;margin:0;text-wrap:balance;}
+  .lede{margin:0;color:var(--ink-soft);max-width:64ch;font-size:15px;}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 20px;font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);}
+
+  section{display:flex;flex-direction:column;gap:16px;}
+  h2{font-family:var(--serif);font-weight:600;font-size:20px;margin:0;padding-bottom:9px;border-bottom:1px solid var(--rule);}
+  p{margin:0;max-width:66ch;}
+  .note{color:var(--ink-soft);font-size:14px;}
+
+  figure{margin:0;display:flex;flex-direction:column;gap:12px;}
+  .canvas{overflow-x:auto;background:var(--raised);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;}
+  .canvas svg{display:block;width:100%;min-width:660px;height:auto;}
+  figcaption{font-size:13.5px;color:var(--ink-soft);max-width:70ch;}
+  figcaption b{color:var(--ink);font-weight:700;}
+
+  /* --- SVG tokens --- */
+  .grp{fill:none;stroke:var(--rule-strong);stroke-width:1;stroke-dasharray:5 4;}
+  .grp-lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;fill:var(--ink-faint);text-transform:uppercase;}
+  .box{fill:var(--sunken);stroke:var(--rule-strong);stroke-width:1.2;}
+  .box-own{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2;}
+  .box-ext{fill:var(--ext-soft);stroke:var(--ext);stroke-width:1.2;}
+  .box-guard{fill:var(--guard-soft);stroke:var(--guard);stroke-width:1.2;}
+  .t{font-family:var(--sans);font-size:13.5px;font-weight:700;fill:var(--ink);}
+  .s{font-family:var(--mono);font-size:11px;fill:var(--ink-soft);}
+  .arw{fill:none;stroke:var(--ink-soft);stroke-width:1.5;}
+  .arw-key{fill:none;stroke:var(--guard);stroke-width:2;}
+  .a{font-family:var(--mono);font-size:11.5px;fill:var(--ink-soft);}
+  .a-key{font-family:var(--mono);font-size:11.5px;fill:var(--guard);font-weight:500;}
+  .key-mark{font-family:var(--mono);font-size:11px;fill:var(--guard);font-weight:500;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--raised);border:1px solid var(--rule);border-radius:10px;overflow:hidden;}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top;}
+  th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:500;background:var(--sunken);}
+  tr:last-child td{border-bottom:none;}
+  td code{font-family:var(--mono);font-size:12px;background:var(--sunken);padding:1px 5px;border-radius:4px;}
+  .tbl-wrap{overflow-x:auto;}
+
+  ul{margin:0;padding-left:1.25em;display:flex;flex-direction:column;gap:9px;}
+  li{max-width:66ch;}
+  li b{font-weight:700;}
+  .why{border-left:2px solid var(--accent);padding-left:16px;display:flex;flex-direction:column;gap:9px;}
+  .open{border-left:2px solid var(--ext);padding-left:16px;display:flex;flex-direction:column;gap:9px;}
+  footer{border-top:1px solid var(--rule);padding-top:20px;color:var(--ink-faint);font-size:12.5px;}
+  footer code{font-family:var(--mono);}
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">System Architecture</p>
+    <h1>AI記録支援 システム構成</h1>
+    <p class="lede">放課後等デイサービスの職員が話した・書いた記録を、生成AIが6項目に振り分けて施設内で共有するシステム。構成の要点は、<b>AIを呼ぶ経路と記録を保存する経路が別々に走っている</b>ことにある。</p>
+    <div class="meta">
+      <span>2026-09-10 時点</span>
+      <span>Next.js 16 / Supabase / OpenAI gpt-4o-mini</span>
+      <span>shien-kiroku-training.vercel.app</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>実行時の構成</h2>
+    <figure>
+      <div class="canvas">
+        <svg viewBox="0 0 890 480" role="img" aria-label="ブラウザ、Vercel、外部サービスの3層構成。AI分類はブラウザからproxy.tsとRoute Handlerを経てOpenAIへ至り、記録の保存・読み出しはVercelを経由せずブラウザから直接Supabaseへ向かう。">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <!-- containers -->
+          <rect class="grp" x="12" y="52" width="204" height="364" rx="10"/>
+          <text class="grp-lbl" x="24" y="72">ブラウザ(職員の端末)</text>
+
+          <rect class="grp" x="288" y="52" width="284" height="250" rx="10"/>
+          <text class="grp-lbl" x="300" y="72">Vercel / Next.js</text>
+
+          <rect class="grp" x="648" y="52" width="230" height="404" rx="10"/>
+          <text class="grp-lbl" x="660" y="72">外部サービス</text>
+
+          <!-- boxes -->
+          <rect class="box-own" x="24" y="86" width="180" height="64" rx="8"/>
+          <text class="t" x="114" y="112" text-anchor="middle">画面</text>
+          <text class="s" x="114" y="132" text-anchor="middle">app/page.tsx</text>
+
+          <rect class="box-own" x="24" y="330" width="180" height="64" rx="8"/>
+          <text class="t" x="114" y="356" text-anchor="middle">Supabaseクライアント</text>
+          <text class="s" x="114" y="376" text-anchor="middle">@supabase/ssr</text>
+
+          <rect class="box-own" x="304" y="86" width="252" height="64" rx="8"/>
+          <text class="t" x="430" y="112" text-anchor="middle">proxy.ts ／ 認証ゲート</text>
+          <text class="s" x="430" y="132" text-anchor="middle">未ログインは /login か 401</text>
+
+          <rect class="box-guard" x="304" y="210" width="252" height="76" rx="8"/>
+          <text class="t" x="430" y="238" text-anchor="middle">/api/structure</text>
+          <text class="key-mark" x="430" y="258" text-anchor="middle">OPENAI_API_KEY はここだけ</text>
+          <text class="s" x="430" y="276" text-anchor="middle">Route Handler(サーバー)</text>
+
+          <rect class="box-ext" x="664" y="210" width="198" height="76" rx="8"/>
+          <text class="t" x="763" y="240" text-anchor="middle">OpenAI</text>
+          <text class="s" x="763" y="262" text-anchor="middle">gpt-4o-mini</text>
+
+          <rect class="box-ext" x="664" y="330" width="198" height="110" rx="8"/>
+          <text class="t" x="763" y="360" text-anchor="middle">Supabase</text>
+          <text class="s" x="763" y="381" text-anchor="middle">Auth ／ Postgres</text>
+          <text class="s" x="763" y="400" text-anchor="middle">facilities · records</text>
+          <text class="a-key" x="763" y="422" text-anchor="middle">RLS</text>
+
+          <!-- arrows: AI path -->
+          <g color="var(--ink-soft)">
+            <line class="arw" x1="204" y1="118" x2="304" y2="118" marker-end="url(#ah)" marker-start="url(#ah)"/>
+            <line class="arw" x1="430" y1="150" x2="430" y2="210" marker-end="url(#ah)"/>
+            <line class="arw" x1="556" y1="238" x2="664" y2="238" marker-end="url(#ah)"/>
+            <line class="arw" x1="664" y1="262" x2="556" y2="262" marker-end="url(#ah)"/>
+          </g>
+          <text class="a" x="254" y="107" text-anchor="middle">① 記録テキスト</text>
+          <text class="a" x="254" y="139" text-anchor="middle">⑤ 6項目のJSON</text>
+          <text class="a" x="442" y="184">② 認証OK</text>
+          <text class="a" x="610" y="230" text-anchor="middle">③ 分類を依頼</text>
+          <text class="a" x="610" y="280" text-anchor="middle">④ 構造化JSON</text>
+
+          <!-- arrow: data path (the point of the figure) -->
+          <g color="var(--guard)">
+            <line class="arw-key" x1="204" y1="362" x2="664" y2="362" marker-end="url(#ah)" marker-start="url(#ah)"/>
+          </g>
+          <text class="a-key" x="434" y="350" text-anchor="middle">⑥ 記録の保存・読み出し ／ Vercelを経由しない</text>
+          <text class="a-key" x="434" y="384" text-anchor="middle">だから RLS が唯一のアクセス制御になる</text>
+        </svg>
+      </div>
+      <figcaption><b>経路は2本ある。</b>AI分類(①〜⑤)はサーバーを通る — <code>OPENAI_API_KEY</code>をブラウザに出さないためと、未ログインのAI呼び出し(＝従量課金の踏み台)を<code>proxy.ts</code>で止めるため。一方、記録の保存・読み出し(⑥)はブラウザから<b>直接Supabaseへ向かい、Vercelを一切経由しない</b>。したがってアクセス制御をアプリ側のコードに書く余地がなく、DB側のRLSが唯一の防御線になる。なお<code>proxy.ts</code>はセッションの検証をSupabase Authに問い合わせる(図では省略)。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>鍵の置き場所</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>鍵</th><th>置き場所</th><th>漏れたらどうなるか</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>OPENAI_API_KEY</code></td>
+            <td>サーバーのみ(<code>/api/structure</code>)。ブラウザに一切渡さない</td>
+            <td>第三者が課金を使える。だからサーバー側に閉じ、さらに認証ゲートで守る</td>
+          </tr>
+          <tr>
+            <td><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code><br>(publishable key)</td>
+            <td>ブラウザに公開される前提の値</td>
+            <td>単体では何も読めない。行の可視性はRLSが決めるため</td>
+          </tr>
+          <tr>
+            <td>Supabase <code>secret key</code></td>
+            <td><b>使っていない</b></td>
+            <td>RLSを丸ごと迂回できる鍵なので、このアプリでは導入しない</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>RLSが効く仕組み</h2>
+    <figure>
+      <div class="canvas">
+        <svg viewBox="0 0 890 290" role="img" aria-label="クライアントはuser_idの条件を書かずにrecordsを問い合わせる。Postgres側のRLSポリシーis_facility_memberが、所属施設の行だけを返し、他施設の行は返さない。">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <rect class="box-own" x="24" y="88" width="256" height="116" rx="8"/>
+          <text class="t" x="152" y="116" text-anchor="middle">クライアントのクエリ</text>
+          <text class="s" x="152" y="140" text-anchor="middle">from("records").select(...)</text>
+          <text class="s" x="152" y="160" text-anchor="middle">.eq("facility_id", …)</text>
+          <text class="a-key" x="152" y="184" text-anchor="middle">user_id の条件は書いていない</text>
+
+          <g color="var(--ink-soft)">
+            <line class="arw" x1="280" y1="146" x2="356" y2="146" marker-end="url(#ah2)"/>
+          </g>
+
+          <rect class="box-guard" x="356" y="78" width="238" height="136" rx="8"/>
+          <text class="t" x="475" y="106" text-anchor="middle">Postgres ／ RLS</text>
+          <text class="s" x="475" y="132" text-anchor="middle">policy on records</text>
+          <text class="s" x="475" y="152" text-anchor="middle">using (</text>
+          <text class="s" x="475" y="170" text-anchor="middle">is_facility_member(facility_id)</text>
+          <text class="s" x="475" y="188" text-anchor="middle">)</text>
+
+          <g color="var(--ink-soft)">
+            <path class="arw" d="M 594 122 L 634 122 L 634 92 L 664 92" marker-end="url(#ah2)"/>
+            <path class="arw" d="M 594 172 L 634 172 L 634 212 L 664 212" marker-end="url(#ah2)"/>
+          </g>
+
+          <rect class="box-own" x="664" y="58" width="200" height="68" rx="8"/>
+          <text class="t" x="764" y="86" text-anchor="middle">自分の施設の行</text>
+          <text class="s" x="764" y="107" text-anchor="middle">返る</text>
+
+          <rect class="box" x="664" y="178" width="200" height="68" rx="8"/>
+          <text class="t" x="764" y="206" text-anchor="middle">他の施設の行</text>
+          <text class="a-key" x="764" y="227" text-anchor="middle">返らない</text>
+        </svg>
+      </div>
+      <figcaption><b>絞り込みはクライアントに書かれていない。</b>所属施設の判定はDB側のポリシーが行うため、画面側のコードにバグがあっても、また利用者がブラウザの開発者ツールから任意のクエリを投げても、他施設の記録は返らない。実際に別ユーザーでログインして施設・記録が一切見えないことを確認済み。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>更新の流れ</h2>
+    <figure>
+      <div class="canvas">
+        <svg viewBox="0 0 890 120" role="img" aria-label="ローカルでgit pushするとGitHubが受け取り、Vercelが自動でビルドして本番URLへ反映する。">
+          <defs>
+            <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+          <rect class="box" x="24" y="34" width="166" height="60" rx="8"/>
+          <text class="t" x="107" y="60" text-anchor="middle">ローカル</text>
+          <text class="s" x="107" y="80" text-anchor="middle">git push</text>
+
+          <rect class="box-ext" x="240" y="34" width="166" height="60" rx="8"/>
+          <text class="t" x="323" y="60" text-anchor="middle">GitHub</text>
+          <text class="s" x="323" y="80" text-anchor="middle">private repo</text>
+
+          <rect class="box-ext" x="456" y="34" width="166" height="60" rx="8"/>
+          <text class="t" x="539" y="60" text-anchor="middle">Vercel</text>
+          <text class="s" x="539" y="80" text-anchor="middle">自動ビルド</text>
+
+          <rect class="box-own" x="672" y="34" width="192" height="60" rx="8"/>
+          <text class="t" x="768" y="60" text-anchor="middle">本番URL</text>
+          <text class="s" x="768" y="80" text-anchor="middle">Vercel Authentication</text>
+
+          <g color="var(--ink-soft)">
+            <line class="arw" x1="190" y1="64" x2="240" y2="64" marker-end="url(#ah3)"/>
+            <line class="arw" x1="406" y1="64" x2="456" y2="64" marker-end="url(#ah3)"/>
+            <line class="arw" x1="622" y1="64" x2="672" y2="64" marker-end="url(#ah3)"/>
+          </g>
+          <text class="a" x="215" y="26" text-anchor="middle">push</text>
+          <text class="a" x="431" y="26" text-anchor="middle">検知</text>
+          <text class="a" x="647" y="26" text-anchor="middle">公開</text>
+        </svg>
+      </div>
+      <figcaption>Vercelの画面を触る必要があるのは初回の設定時だけで、以降は<code>git push</code>が本番反映のトリガーになる。公開URLはVercel Authenticationで保護し、プロジェクトにアクセス権のある人だけが開ける。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>この構成にした理由</h2>
+    <div class="why">
+      <p><b>記録をブラウザから直接Supabaseへ送る。</b>記録のCRUDを自前のAPIで包むと、認可のコードを自分で書くことになり、書き漏らせばそこが穴になる。RLSに寄せれば判定はDBの1箇所に集まる。代償として、RLSポリシーの設計ミスが即座に事故になるため、別ユーザーでの不可視性を実機で確認する手順を検証項目に入れている。</p>
+      <p><b>AI呼び出しだけはサーバーを通す。</b><code>OPENAI_API_KEY</code>はRLSのような行単位の防御が効かず、漏れたら第三者が課金を使えてしまう。ブラウザに出さない一点のためにRoute Handlerを置いている。</p>
+      <p><b>共有の単位を「施設」にした。</b>現場では誰が記録してもスタッフ全員が見返す必要があるため、利用者個人ごとに記録を分ける設計は運用に合わない。</p>
+      <p><b>PDFは印刷CSSで出す。</b>PDF生成ライブラリは日本語フォントの埋め込みが必要になり、このPoCで確かめたいこと(記録が現場で通用する形で出せるか)から外れるコストが大きい。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>未解決の論点</h2>
+    <div class="open">
+      <p><b>要配慮個人情報の預け先。</b>児童の健康情報を含みうる文章が、OpenAI社とSupabase社の2社に渡る。両社のデータ保持・保管リージョンの要件確認は未了で、PoC期間中はダミーデータのみを扱う運用でしのいでいる。導入判断の中心論点。</p>
+      <p><b>AIの分類は確率的で、間違える。</b>特記事項(事故・ヒヤリハット)については、原文をキーワードで機械的に照合し、AIが拾い漏らした可能性を警告する安全網を別途置いている。それ以外の5項目にはこの網が無い。</p>
+      <p><b>招待にメール通知が無い。</b>招待されたスタッフは、自分が招待されたことに気づく手段を持たない(口頭・チャットで伝える前提)。</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>詳細な検証記録・不具合の経緯は、リポジトリの <code>docs/architecture.md</code>(コンポーネント別の詳細)、<code>docs/issue-log.md</code>(障害票)、<code>docs/change-log.md</code>(変更管理表)を参照。</p>
+  </footer>
+
+</div>
