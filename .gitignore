@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 値が空のテンプレートだけは追跡する(READMEの手順で `cp .env.local.example .env.local` を案内しているため)
+!.env.local.example
 
 # vercel
 .vercel

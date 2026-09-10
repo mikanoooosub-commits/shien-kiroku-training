@@ -1,150 +1,616 @@
-.page {
-  --background: #fafafa;
-  --foreground: #fff;
-
-  --text-primary: #000;
-  --text-secondary: #666;
-
-  --button-primary-hover: #383838;
-  --button-secondary-hover: #f2f2f2;
-  --button-secondary-border: #ebebeb;
-
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-geist-sans);
-  background-color: var(--background);
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
 }
 
-.main {
+.masthead {
+  padding: 0 0 28px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 28px;
   display: flex;
-  flex: 1;
-  width: 100%;
-  max-width: 800px;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
-  background-color: var(--foreground);
-  padding: 120px 60px;
+  gap: 20px 32px;
+  align-items: flex-end;
 }
-
-.intro {
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  margin: 0 0 12px;
+}
+.title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: clamp(24px, 3.4vw, 32px);
+  line-height: 1.3;
+  margin: 0 0 10px;
+  text-wrap: balance;
+  max-width: 22ch;
+}
+.dek {
+  color: var(--ink-soft);
+  font-size: 14.5px;
+  max-width: 48ch;
+  margin: 0;
+}
+.metaRow {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  gap: 24px;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  text-align: right;
+  flex-shrink: 0;
 }
 
-.intro h1 {
-  max-width: 320px;
-  font-size: 40px;
+.disclosure {
+  display: flex;
+  gap: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 32px;
+}
+.disclosureDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 7px;
+}
+.disclosure p {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.disclosure p:last-child {
+  margin-bottom: 0;
+}
+.disclosure strong {
+  color: var(--ink);
   font-weight: 600;
-  line-height: 48px;
-  letter-spacing: -2.4px;
-  text-wrap: balance;
-  color: var(--text-primary);
+}
+.disclosure code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--bg-raised);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
-.intro p {
-  max-width: 440px;
-  font-size: 18px;
-  line-height: 32px;
-  text-wrap: balance;
-  color: var(--text-secondary);
+.bench {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 840px) {
+  .bench {
+    grid-template-columns: 1fr;
+  }
 }
 
-.intro a {
-  font-weight: 500;
-  color: var(--text-primary);
+.panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: 22px 24px 24px;
 }
-
-.ctas {
+.panelHead {
   display: flex;
-  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+  gap: 10px;
+}
+.panelTitle {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 16.5px;
+}
+.panelSub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.textarea {
   width: 100%;
-  max-width: 440px;
-  gap: 16px;
-  font-size: 14px;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.8;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.textarea::placeholder {
+  color: var(--ink-faint);
 }
 
-.ctas a {
+.inputTools {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 128px;
-  border: 1px solid transparent;
-  transition: 0.2s;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.btn {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   cursor: pointer;
-  width: fit-content;
+  border-radius: 9px;
+  padding: 9px 16px;
+  border: 1px solid var(--rule-strong);
+  background: var(--bg-raised);
+  color: var(--ink);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    transform 0.1s;
+}
+.btn:hover {
+  border-color: var(--ink-faint);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btnPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-raised);
+  font-weight: 600;
+  margin-left: auto;
+}
+.btnPrimary:hover {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+.btnMic {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.recDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+.btnMicRecording {
+  background: var(--rec-soft);
+  border-color: var(--rec);
+  color: var(--rec);
+}
+.btnMicRecording .recDot {
+  background: var(--rec);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.statRow {
+  display: flex;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  border-top: 1px dashed var(--rule);
+  padding-top: 12px;
+}
+.statRow b {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.emptyState {
+  border: 1px dashed var(--rule-strong);
+  border-radius: 10px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 13.5px;
+}
+.emptyState .glyph {
+  font-size: 22px;
+  display: block;
+  margin-bottom: 10px;
+  opacity: 0.6;
+}
+
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 4px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--rule-strong);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorCallout {
+  background: var(--bad-soft);
+  border-left: 3px solid var(--bad);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.field {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+.field:last-child {
+  margin-bottom: 0;
+}
+.fieldHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-raised);
+  gap: 10px;
+}
+.fieldName {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
   font-weight: 500;
 }
+.fieldHeadRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.badgeAuto {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.badgeReview {
+  background: var(--flag-soft);
+  color: var(--flag-ink);
+}
+.copyBtn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+.copyBtnCopied {
+  background: var(--good-soft);
+  border-color: var(--good);
+  color: var(--good);
+}
+.fieldBody {
+  padding: 11px 14px;
+  font-size: 14px;
+  line-height: 1.75;
+  min-height: 24px;
+  color: var(--ink);
+  outline: none;
+}
+.fieldBody:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg-raised);
+}
+.fieldBody:empty::before {
+  content: "(該当する記述なし — 手入力してください)";
+  color: var(--ink-faint);
+  font-style: italic;
+}
 
-a.primary {
-  background: var(--text-primary);
-  color: var(--background);
+.uncertainCallout {
+  background: var(--flag-soft);
+  border-left: 3px solid var(--flag);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--flag-ink);
+}
+.uncertainCallout ul {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+}
+
+/* AI自身の自己申告(uncertainCallout)とは別に、こちらは原文をキーワードで機械的に洗い出した検知結果。
+   安全(事故・ヒヤリハット)に関わるため bad 色で区別する。 */
+.mismatchCallout {
+  background: var(--bad-soft);
+  border-left: 3px solid var(--bad);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.mismatchCallout ul {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+}
+
+.pageFooter {
+  margin-top: 44px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-size: 12.5px;
+}
+.pageFooter p {
+  margin: 0 0 6px;
+}
+.pageFooter code {
+  font-family: var(--font-mono);
+  background: var(--bg-raised);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+}
+
+/* 「該当なし」は警告ではなく事実の報告なので、注意色(flag)ではなく無彩色にする。 */
+.badgeNone {
+  background: var(--bg-sunken);
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+}
+
+.saveBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--rule);
+}
+.labelInput {
+  flex: 1 1 180px;
+  min-width: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 9px;
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  padding: 9px 12px;
+}
+.labelInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.labelInput::placeholder {
+  color: var(--ink-faint);
+}
+.saveFlash {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--good);
+}
+
+.archive {
+  margin-top: 32px;
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: 22px 24px 24px;
+}
+.archiveNote {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+.archiveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
-
-a.secondary {
-  border-color: var(--button-secondary-border);
+.archiveItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  padding: 10px 14px;
+}
+.archiveItemActive {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.archiveMain {
+  min-width: 0;
+}
+.archiveHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+.archiveLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.archiveTime {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.archiveSummary {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.archiveActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-/* Enable hover only on non-touch devices */
-@media (hover: hover) and (pointer: fine) {
-  a.primary:hover {
-    background: var(--button-primary-hover);
-    border-color: transparent;
-  }
-
-  a.secondary:hover {
-    background: var(--button-secondary-hover);
-    border-color: transparent;
-  }
+/* 印刷時だけ出す要素。画面では隠しておく。 */
+.printHeader,
+.printOnly {
+  display: none;
 }
 
-@media (max-width: 600px) {
-  .main {
-    padding: 48px 24px;
+/*
+ * PDF出力は「印刷 → PDFとして保存」で行う。
+ * jsPDF等を使わないのは、日本語フォントの埋め込みが必要になり、
+ * PoCの本題(記録が現場で通用する形で出せるか)から外れるコストが大きいため。
+ */
+@media print {
+  .noPrint {
+    display: none !important;
   }
-
-  .intro {
-    gap: 16px;
+  .wrap {
+    max-width: none;
+    margin: 0;
+    padding: 0;
   }
-
-  .intro h1 {
-    font-size: 32px;
-    line-height: 40px;
-    letter-spacing: -1.92px;
+  .bench {
+    display: block;
   }
-}
-
-@media (prefers-color-scheme: dark) {
-  .logo {
-    filter: invert();
+  .panel {
+    border: none;
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
   }
-
-  .page {
-    --background: #000;
-    --foreground: #000;
-
-    --text-primary: #ededed;
-    --text-secondary: #999;
-
-    --button-primary-hover: #ccc;
-    --button-secondary-hover: #1a1a1a;
-    --button-secondary-border: #1a1a1a;
+  .printOnly {
+    display: inline;
   }
-}
-
-.code {
-  font-family: var(--font-geist-mono);
-  font-size: 0.9em;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  padding: 0.1em 0.4em;
-  border-radius: 6px;
+  .printHeader {
+    display: block;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #333333;
+  }
+  .printHeader h2 {
+    font-family: var(--font-serif);
+    font-size: 17px;
+    margin: 0 0 5px;
+    color: #000000;
+  }
+  .printHeader p {
+    margin: 0;
+    font-size: 11.5px;
+    color: #333333;
+  }
+  .field {
+    border: 1px solid #999999;
+    background: #ffffff;
+    margin-bottom: 7px;
+    break-inside: avoid;
+  }
+  .fieldHead {
+    background: #f0f0f0;
+    border-bottom: 1px solid #999999;
+    padding: 4px 10px;
+  }
+  .fieldName {
+    color: #000000;
+    font-size: 10.5px;
+  }
+  .fieldBody {
+    color: #000000;
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 7px 10px;
+    min-height: 30px;
+  }
+  /* 画面用の「(該当する記述なし — 手入力してください)」は紙の記録には不要。 */
+  .fieldBody:empty::before {
+    content: "—";
+    font-style: normal;
+    color: #777777;
+  }
+  .uncertainCallout {
+    break-inside: avoid;
+    background: #ffffff;
+    border: 1px solid #999999;
+    border-left: 3px solid #333333;
+    color: #000000;
+    font-size: 11.5px;
+  }
+  .mismatchCallout {
+    break-inside: avoid;
+    background: #ffffff;
+    border: 1px solid #999999;
+    border-left: 3px solid #333333;
+    color: #000000;
+    font-size: 11.5px;
+  }
 }

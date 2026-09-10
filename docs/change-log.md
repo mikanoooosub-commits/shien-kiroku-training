@@ -1,0 +1,16 @@
+# 変更管理表
+
+対象: 支援記録オートドラフト(本番PoC) — `poc-app/`
+運用: 仕様・スキーマに影響する変更をここに記録する(CLAUDE.md方針)。不具合起点の変更は`issue-log.md`のIDと相互参照する。
+
+> **注記**: `poc-app/`はコード変更を都度コミットしておらず(2026-09-10時点で唯一のコミットは`create-next-app`の初期scaffoldのみ)、細かい変更日時をgit履歴から追跡できない。CHANGE-002は正確な日付が特定できないため、判明している範囲(期間)で記載する。
+
+| ID | 日付 | 変更内容 | 理由 | 影響範囲 |
+|---|---|---|---|---|
+| CHANGE-001 | 2026-08-27 | PoC初版を構築。Next.js(App Router, TypeScript strict)を新規作成し、`app/page.tsx`(入力・6項目表示UI)と`app/api/structure/route.ts`(OpenAI `gpt-4o-mini`呼び出し)を実装。 | 体験デモ(`research/itabashi-2026-08/poc/prototype-demo.html`)のキーワード照合による疑似分類を、実際の生成AI呼び出しに置き換えるため。 | 新規(`poc-app/`一式) |
+| CHANGE-002 | 2026-08-27 〜 2026-09-08 の間(正確な日付不明) | `app/record.ts`(`RecordSchema`・`CATEGORY_META`・`SavedRecordSchema`を集約)、`app/storage.ts`(localStorage保存・読込・削除)を新設。`app/page.tsx`に保存・一覧・再読込・削除・印刷/PDF出力(`beforeprint` + `flushSync`)を追加。 | PoCとしての完成度を上げるため。記録の確認・保存・見返し・印刷という現場運用に必要な機能を揃える。保存先をlocalStorage限定にしたのは、PoC期間中は実データを扱わずダミーデータで検証する方針のため(記録をriceparrowLab側に残さない)。 | `app/page.tsx`全面改修、`app/record.ts`・`app/storage.ts`新規、`app/page.module.css`に印刷用スタイル追加 |
+| CHANGE-003 | 2026-09-10 | システムプロンプト(`route.ts`)に「安全に関わる語を含む文は、他項目と重複してでも必ず`incident`に含める」旨の指示を追加。 | ISSUE-001。実際のAPI呼び出し検証で、事故・ヒヤリハット関連の記述が`incident`に反映されないケースを発見したため。 | `app/api/structure/route.ts`の`SYSTEM_PROMPT`のみ(スキーマ自体は不変) |
+| CHANGE-004 | 2026-09-10 | 原文中の安全関連キーワードを検出し、`incident`にも`uncertainNotes`にも反映されていない場合に警告を表示する機械チェック(`findIncidentMismatches`)を追加。専用のコールアウトスタイル(`.mismatchCallout`、画面用・印刷用)を追加。 | ISSUE-001。CHANGE-003(プロンプト改善)だけではLLMの確率的な見落としを根絶できないため、見落としを検知可能にする安全網として追加。 | `app/page.tsx`(状態`incidentMismatches`・関数追加・`handleGenerate`/`handleClear`/`handleLoad`への組み込み)、`app/page.module.css`(`.mismatchCallout`とその印刷スタイル) |
+| CHANGE-005 | 2026-09-10 | `docs/architecture.md`(システム構成図)・`docs/issue-log.md`(障害票)・`docs/change-log.md`(本ファイル)を新設。 | ユーザー要望(PoCの完成度向上のため、障害票・システム構成図をきちんと管理したい)。 | ドキュメントのみ。コードへの影響なし。 |
+| CHANGE-007 | 2026-09-10 | `createFacility()`から`.select()`(=`RETURNING`)を外し、作成後に`getMyFacility()`で取り直す形に変更。 | ISSUE-003。`RETURNING`のSELECTポリシー評価が、作成者をメンバー登録するAFTER INSERTトリガーより先に走るため、施設作成が必ずRLSエラーになっていた。 | `app/facility.ts`のみ。スキーマ・ポリシーは変更なし。 |
+| CHANGE-006 | 2026-09-10 | localStorageのみの保存(`app/storage.ts`)をSupabase(Auth + Postgres + RLS)へ移行。`facilities`/`facility_members`/`records`テーブルとRLSポリシー・招待用RPC(`invite_to_facility`)を新設(`supabase/schema.sql`、対になる`supabase/rollback.sql`)。メール+パスワード認証(`app/login/page.tsx`)、施設単位の共有・招待UI、`proxy.ts`(Next.js 16でmiddlewareから名称変更)によるセッション検証・未ログインリダイレクトを追加。`app/storage.ts`は`app/records.ts`(Supabase版)に置き換えて削除。 | ユーザー要望: 研修課題として本格的なシステムを作りたい。localStorageだと記録が端末に閉じてしまい、実際の現場(複数スタッフで記録を共有)に合わないため、Supabase無料枠でDB+認証を導入する。 | 新規: `supabase/schema.sql`・`supabase/rollback.sql`・`app/supabase-browser.ts`・`app/supabase-server.ts`・`app/facility.ts`・`app/records.ts`・`app/login/page.tsx`・`app/database.types.ts`・`proxy.ts`。変更: `app/page.tsx`(auth・施設・Supabase記録操作を統合)、`.env.local.example`(Supabase環境変数を追加)。削除: `app/storage.ts`。 |

@@ -1,17 +1,63 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-sans: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "YuGothic", sans-serif;
+  --font-serif: "Zen Old Mincho", "Hiragino Mincho ProN", "YuMincho", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg: #f3f6f6;
+  --bg-raised: #ffffff;
+  --bg-sunken: #e9efee;
+  --ink: #1a2226;
+  --ink-soft: #47555a;
+  --ink-faint: #7b8a8e;
+  --rule: #d7dedd;
+  --rule-strong: #c1cbc9;
+  --accent: #1f6f64;
+  --accent-ink: #0f4c44;
+  --accent-soft: #dcede9;
+  --flag: #a8631e;
+  --flag-soft: #f6e7d5;
+  --flag-ink: #6b4413;
+  --rec: #b4433a;
+  --rec-soft: #f7e2df;
+  --good: #2c7a4b;
+  --good-soft: #dcefe1;
+  --bad: #b4433a;
+  --bad-soft: #f7e2df;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #10181a;
+    --bg-raised: #172224;
+    --bg-sunken: #0c1315;
+    --ink: #e6edec;
+    --ink-soft: #aec0be;
+    --ink-faint: #7c908e;
+    --rule: #2a3a3b;
+    --rule-strong: #3a4e4f;
+    --accent: #56c3b2;
+    --accent-ink: #8fdccf;
+    --accent-soft: #1c3733;
+    --flag: #e3a857;
+    --flag-soft: #3a2e18;
+    --flag-ink: #f0c687;
+    --rec: #e28880;
+    --rec-soft: #3b211f;
+    --good: #7fcb9b;
+    --good-soft: #1d3327;
+    --bad: #e28880;
+    --bad-soft: #3b211f;
   }
 }
 
-html {
-  height: 100%;
+* {
+  box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 html,
@@ -21,29 +67,35 @@ body {
 }
 
 body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans), "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
+  line-height: 1.75;
+  font-size: 15.5px;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: inherit;
-  text-decoration: none;
+  color: var(--accent-ink);
+}
+a:hover {
+  color: var(--accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+/*
+ * 印刷時はOSのダークモード設定に引きずられないよう、地色と文字色を明示的に戻す。
+ * (紙に出すと背景が塗られない一方、文字だけ淡色のまま出て読めなくなるため)
+ */
+@media print {
+  body {
+    background: #ffffff;
+    color: #000000;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  @page {
+    margin: 16mm;
   }
 }
