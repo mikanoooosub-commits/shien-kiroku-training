@@ -51,7 +51,7 @@ export default function LoginPage() {
         <div>
           <p className={styles.eyebrow}>PoC Prototype · 本番構成</p>
           <h1 className={styles.title}>{mode === "signin" ? "ログイン" : "新規登録"}</h1>
-          <p className={styles.dek}>支援記録オートドラフトは施設単位のログインが必要です。</p>
+          <p className={styles.dek}>AI記録支援は施設単位のログインが必要です。</p>
         </div>
       </header>
 

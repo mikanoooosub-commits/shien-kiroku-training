@@ -471,9 +471,9 @@ export default function Home() {
       <header className={styles.masthead + " " + styles.noPrint}>
         <div>
           <p className={styles.eyebrow}>PoC Prototype · 本番構成</p>
-          <h1 className={styles.title}>支援記録オートドラフト</h1>
+          <h1 className={styles.title}>AI記録支援</h1>
           <p className={styles.dek}>
-            職員がその場で話した・書いた内容を、生成AI(OpenAI gpt-4o-mini)が6項目の構造化ドラフトへ整理する。
+            職員がその場で話した・書いた内容を、生成AI(OpenAI gpt-4o-mini)が6項目へ自動で振り分ける。
           </p>
         </div>
         <div className={styles.metaRow}>
@@ -484,24 +484,6 @@ export default function Home() {
           </button>
         </div>
       </header>
-
-      <div className={styles.disclosure + " " + styles.noPrint}>
-        <span className={styles.disclosureDot} />
-        <div>
-          <p>
-            <strong>この画面でできること</strong>:
-            実際に OpenAI の生成AIモデル(gpt-4o-mini)を呼び出し、自由に書いた・話した文章を6項目に振り分けます(キーワード照合の簡易版ではありません)。作った記録は同じ施設のスタッフ全員で共有されます(Supabase・RLSで施設外からは見えません)。
-          </p>
-          <p>
-            <strong>AIは間違えます。直す前提で作っています</strong>:
-            音声の聞き取り誤りも、項目の振り分け誤りも起こります。だから全項目をその場で直接書き換えられるようにし、判断に迷った文はAIが自分で切り出して下に残します。<strong>直す手間が小さいこと</strong>を設計の中心に置いています。
-          </p>
-          <p>
-            <strong>まだ検証できていないこと</strong>:
-            児童の健康情報等を扱うため、本番導入前に個人情報保護・データ送信先(OpenAI社・Supabase社)の要件確認が必要です(<code>poc-spec.html</code> §7)。PoC期間中はダミーデータで検証します。
-          </p>
-        </div>
-      </div>
 
       <div className={styles.bench}>
         <section className={styles.panel + " " + styles.noPrint}>
@@ -543,7 +525,7 @@ export default function Home() {
               onClick={handleGenerate}
               disabled={isGenerating || !text.trim()}
             >
-              AIに下書きさせる →
+              AI分類分け
             </button>
           </div>
           <div className={styles.statRow}>
@@ -555,7 +537,7 @@ export default function Home() {
 
         <section className={styles.panel}>
           <div className={styles.panelHead + " " + styles.noPrint}>
-            <span className={styles.panelTitle}>2. AIの構造化ドラフト</span>
+            <span className={styles.panelTitle}>2. AIアウトプット</span>
             <span className={styles.panelSub}>Output · 6項目</span>
           </div>
 
@@ -578,7 +560,7 @@ export default function Home() {
           {!isGenerating && !record && (
             <div className={styles.emptyState}>
               <span className={styles.glyph}>📋</span>
-              左の入力欄に記入し、「AIに下書きさせる」を押すと、ここに出欠・健康面・活動内容などの下書きが生成されます。
+              左の入力欄に記入し、「AI分類分け」を押すと、ここに出欠・健康面・活動内容などの下書きが生成されます。
             </div>
           )}
 
@@ -743,6 +725,25 @@ export default function Home() {
         </form>
         {inviteNotice && <p className={styles.saveFlash} style={{ marginTop: 8 }}>{inviteNotice}</p>}
       </section>
+
+      {/* 毎日使う画面なので、説明は作業導線(入力→出力→保存)の下に置く。 */}
+      <div className={styles.disclosure + " " + styles.noPrint} style={{ marginTop: 32, marginBottom: 0 }}>
+        <span className={styles.disclosureDot} />
+        <div>
+          <p>
+            <strong>この画面でできること</strong>:
+            実際に OpenAI の生成AIモデル(gpt-4o-mini)を呼び出し、自由に書いた・話した文章を6項目に振り分けます(キーワード照合の簡易版ではありません)。作った記録は同じ施設のスタッフ全員で共有されます(Supabase・RLSで施設外からは見えません)。
+          </p>
+          <p>
+            <strong>AIは間違えます。直す前提で作っています</strong>:
+            音声の聞き取り誤りも、項目の振り分け誤りも起こります。だから全項目をその場で直接書き換えられるようにし、判断に迷った文はAIが自分で切り出して下に残します。<strong>直す手間が小さいこと</strong>を設計の中心に置いています。
+          </p>
+          <p>
+            <strong>まだ検証できていないこと</strong>:
+            児童の健康情報等を扱うため、本番導入前に個人情報保護・データ送信先(OpenAI社・Supabase社)の要件確認が必要です(<code>poc-spec.html</code> §7)。PoC期間中はダミーデータで検証します。
+          </p>
+        </div>
+      </div>
 
       <footer className={styles.pageFooter + " " + styles.noPrint}>
         <p>各項目は生成後も直接クリックして編集でき、項目ごとにコピーして既存の記録(紙・カイポケ・HUG等)へ貼り付けられます。</p>

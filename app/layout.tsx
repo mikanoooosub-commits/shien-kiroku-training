@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "支援記録オートドラフト(本番PoC)",
+  title: "AI記録支援(本番PoC)",
   description: "生成AI(OpenAI gpt-4o-mini)が活動記録を6項目に構造化する、放課後等デイサービス向けPoC。",
 };
 
