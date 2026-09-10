@@ -26,10 +26,14 @@ export const RecordSchema = z.object({
     ),
   contact: z
     .string()
-    .describe("保護者等への連絡・お願い事項に関する下書き文。該当する記述がなければ空文字。"),
+    .describe(
+      "【宛先が保護者・家族】の連絡・お願い事項に関する下書き文。持ち物の依頼、面談日程の確認依頼など。該当する記述がなければ空文字。"
+    ),
   handover: z
     .string()
-    .describe("次の担当者への引き継ぎ・申し送り事項に関する下書き文。該当する記述がなければ空文字。"),
+    .describe(
+      "【宛先が施設内の他の職員】(次の担当者・遅番のスタッフ等)への引き継ぎ・申し送り事項に関する下書き文。該当する記述がなければ空文字。"
+    ),
   uncertainNotes: z
     .array(z.string())
     .describe(
