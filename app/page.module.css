@@ -123,6 +123,20 @@
   letter-spacing: 0.06em;
 }
 
+.inputNotice {
+  margin: 0 0 12px;
+  padding: 9px 13px;
+  border-left: 3px solid var(--flag);
+  background: var(--flag-soft);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--flag-ink);
+}
+.inputNotice strong {
+  font-weight: 700;
+}
+
 .textarea {
   width: 100%;
   min-height: 220px;

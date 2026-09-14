@@ -491,6 +491,9 @@ export default function Home() {
             <span className={styles.panelTitle}>1. 職員の入力</span>
             <span className={styles.panelSub}>Input</span>
           </div>
+          <p className={styles.inputNotice}>
+            児童は<strong>仮名・ニックネーム</strong>で入力してください(本名や個人を特定できる情報は入力しないでください)。
+          </p>
           <textarea
             className={styles.textarea}
             value={text}
