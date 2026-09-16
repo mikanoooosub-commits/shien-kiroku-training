@@ -117,6 +117,9 @@
 
 ## デプロイ
 
+- デプロイ先(Vercel): https://shien-kiroku-training.vercel.app
+- GitHub(`main`)へのpushで自動デプロイされる。ローカルとデプロイ先は同じSupabaseプロジェクトを共有しているため、`supabase/schema.sql` の変更はコードのデプロイと独立してSupabase SQL Editorで適用する(適用手順は `schema.sql` 冒頭のコメントを参照)。
+
 Vercelにデプロイする場合、プロジェクトルートを `poc-app/` に設定し、環境変数 `OPENAI_API_KEY` / `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` をVercelのプロジェクト設定で登録する(`.env.local` はデプロイ先に含まれない)。
 
 ```bash
