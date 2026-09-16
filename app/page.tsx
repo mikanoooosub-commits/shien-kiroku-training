@@ -81,6 +81,19 @@ function findIncidentMismatches(sourceText: string, record: StructuredRecord): s
   });
 }
 
+/** 同じ児童の、指定日より前で最も新しい保存済み記録(直近の記録)。無ければ null。 */
+function findPreviousRecord(
+  saved: SavedRecord[],
+  childId: string,
+  recordDate: string,
+  excludeId: string | null
+): SavedRecord | null {
+  const candidates = saved
+    .filter((r) => r.childId === childId && r.id !== excludeId && r.recordDate < recordDate)
+    .sort((a, b) => (a.recordDate < b.recordDate ? 1 : a.recordDate > b.recordDate ? -1 : 0));
+  return candidates[0] ?? null;
+}
+
 const SAMPLES = [
   "れんくんは今日9時に到着して、すぐ検温したら36.8度で元気でした。工作の時間に紙飛行機を作って、うまく飛ばせたのがすごく嬉しそうでした。おやつの後にたっくんと少しぶつかってヒヤリハットになりかけましたが、すぐ間に入って落ち着きました。今日はいつもより疲れ気味な様子でした。お迎えは16時にお母さんが来ました。明日は療育プログラムの持ち物としてタオルを追加で持ってきてほしいと伝えてください。次の担当の田中さんに、れんくんが今日少し疲れ気味だったことを申し送りしておいてください。",
   "みおちゃんは13時に登所、遅刻はなしでした。少し鼻水が出ていたので水分をこまめに取らせました。今日の活動はリズム運動で、みんなで輪になって体を動かしました。特にトラブルやヒヤリハットはありませんでした。お迎えのお父さんに、来週の個別支援計画の面談日程を確認してほしいと伝えてください。夕方の担当の佐藤さんに、みおちゃんが鼻水気味なので明日は室内活動を中心にしてほしいと引き継ぎます。",
@@ -149,6 +162,10 @@ export default function Home() {
 
   // 記録対象日(「いつの記録か」。保存日時とは別で、過去日も指定できる)。
   const [recordDate, setRecordDate] = useState(() => todayStr());
+
+  // 同じ児童の直近の記録(健康面)をAIへの参考情報として渡すかどうか。デフォルトON。
+  // 事故など特別な出来事があった日に、過去の情報が記録の焦点をぼかす場合の逃げ道として、生成前にOFFにできる。
+  const [referencePrevious, setReferencePrevious] = useState(true);
 
   // 保存済み記録一覧の絞り込み(児童・日付)。
   const [filterChildId, setFilterChildId] = useState("");
@@ -346,16 +363,22 @@ export default function Home() {
 
   async function handleGenerate() {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || !childId) return;
     setIsGenerating(true);
     setError(null);
     setRecord(null);
     setSaveFlash(null);
     try {
+      const previousRecord = referencePrevious ? findPreviousRecord(saved, childId, recordDate, activeId) : null;
       const res = await fetch("/api/structure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: trimmed }),
+        body: JSON.stringify({
+          text: trimmed,
+          previousHealthNote: previousRecord
+            ? { recordDate: previousRecord.recordDate, health: previousRecord.record.health }
+            : null,
+        }),
       });
       // 自前のAPIでもネットワークを跨ぐ以上、型注釈ではなく実際に形を検証してから使う。
       const parsed = ApiResponseSchema.safeParse(await res.json());
@@ -558,6 +581,82 @@ export default function Home() {
             <span className={styles.panelTitle}>1. 職員の入力</span>
             <span className={styles.panelSub}>Input</span>
           </div>
+
+          <p className={styles.inputNotice} style={{ margin: 0 }}>
+            児童も<strong>仮名・ニックネーム</strong>で登録してください(本名や個人を特定できる情報は入力しないでください)。
+          </p>
+          <div className={styles.saveBar} style={{ marginTop: 8, paddingTop: 0, borderTop: "none" }}>
+            <select
+              className={styles.labelInput}
+              value={childId}
+              onChange={(e) => setChildId(e.target.value)}
+              aria-label="対象児童"
+            >
+              <option value="">対象児童を選択…</option>
+              {children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nickname}({gradeLabel(c.enrollmentYear)})
+                </option>
+              ))}
+            </select>
+            <input
+              className={styles.labelInput}
+              type="date"
+              value={recordDate}
+              onChange={(e) => setRecordDate(e.target.value)}
+              aria-label="記録対象日"
+            />
+            <button type="button" className={styles.btn} onClick={() => setShowAddChild((v) => !v)}>
+              {showAddChild ? "キャンセル" : "+ 児童を追加"}
+            </button>
+          </div>
+          {children.length === 0 && !showAddChild && (
+            <p className={styles.archiveNote} style={{ margin: 0 }}>
+              まだ児童が登録されていません。「+ 児童を追加」から登録してください。
+            </p>
+          )}
+          {childrenError && <div className={styles.errorCallout}>⚠ {childrenError}</div>}
+          {showAddChild && (
+            <form
+              onSubmit={handleCreateChild}
+              className={styles.saveBar}
+              style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+            >
+              <input
+                className={styles.labelInput}
+                type="text"
+                value={newChildNickname}
+                onChange={(e) => setNewChildNickname(e.target.value)}
+                placeholder="ニックネーム(例: れんくん)"
+                aria-label="児童のニックネーム"
+                required
+              />
+              <input
+                className={styles.labelInput}
+                style={{ maxWidth: 120 }}
+                type="number"
+                value={newChildEnrollmentYear}
+                onChange={(e) => setNewChildEnrollmentYear(e.target.value)}
+                placeholder="小学校入学年度"
+                aria-label="小学校入学年度"
+                required
+              />
+              <button type="submit" className={styles.btn + " " + styles.btnPrimary} disabled={addingChild}>
+                {addingChild ? "登録中…" : "登録"}
+              </button>
+            </form>
+          )}
+          {addChildError && <div className={styles.errorCallout}>⚠ {addChildError}</div>}
+
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={referencePrevious}
+              onChange={(e) => setReferencePrevious(e.target.checked)}
+            />
+            過去の記録を参照する(同じ児童の直近の健康面の記述をAIへの参考情報として渡します)
+          </label>
+
           <p className={styles.inputNotice}>
             児童は<strong>仮名・ニックネーム</strong>で入力してください(本名や個人を特定できる情報は入力しないでください)。
           </p>
@@ -593,7 +692,8 @@ export default function Home() {
               type="button"
               className={styles.btn + " " + styles.btnPrimary}
               onClick={handleGenerate}
-              disabled={isGenerating || !text.trim()}
+              disabled={isGenerating || !text.trim() || !childId}
+              title={!childId ? "先に対象児童を選択してください" : undefined}
             >
               AI分類分け
             </button>
@@ -702,73 +802,12 @@ export default function Home() {
                 </div>
               )}
 
-              <div className={styles.saveBar + " " + styles.noPrint} style={{ flexDirection: "column", alignItems: "stretch" }}>
-                <p className={styles.inputNotice} style={{ margin: 0 }}>
-                  児童も<strong>仮名・ニックネーム</strong>で登録してください(本名や個人を特定できる情報は入力しないでください)。
-                </p>
-                <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-                  <select
-                    className={styles.labelInput}
-                    value={childId}
-                    onChange={(e) => setChildId(e.target.value)}
-                    aria-label="対象児童"
-                  >
-                    <option value="">対象児童を選択…</option>
-                    {children.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nickname}({gradeLabel(c.enrollmentYear)})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={styles.labelInput}
-                    type="date"
-                    value={recordDate}
-                    onChange={(e) => setRecordDate(e.target.value)}
-                    aria-label="記録対象日"
-                  />
-                  <button type="button" className={styles.btn} onClick={() => setShowAddChild((v) => !v)}>
-                    {showAddChild ? "キャンセル" : "+ 児童を追加"}
-                  </button>
-                </div>
-                {children.length === 0 && !showAddChild && (
-                  <p className={styles.archiveNote} style={{ margin: 0 }}>
-                    まだ児童が登録されていません。「+ 児童を追加」から登録してください。
-                  </p>
-                )}
-                {childrenError && <div className={styles.errorCallout}>⚠ {childrenError}</div>}
-                {showAddChild && (
-                  <form
-                    onSubmit={handleCreateChild}
-                    className={styles.saveBar}
-                    style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
-                  >
-                    <input
-                      className={styles.labelInput}
-                      type="text"
-                      value={newChildNickname}
-                      onChange={(e) => setNewChildNickname(e.target.value)}
-                      placeholder="ニックネーム(例: れんくん)"
-                      aria-label="児童のニックネーム"
-                      required
-                    />
-                    <input
-                      className={styles.labelInput}
-                      style={{ maxWidth: 120 }}
-                      type="number"
-                      value={newChildEnrollmentYear}
-                      onChange={(e) => setNewChildEnrollmentYear(e.target.value)}
-                      placeholder="小学校入学年度"
-                      aria-label="小学校入学年度"
-                      required
-                    />
-                    <button type="submit" className={styles.btn + " " + styles.btnPrimary} disabled={addingChild}>
-                      {addingChild ? "登録中…" : "登録"}
-                    </button>
-                  </form>
-                )}
-                {addChildError && <div className={styles.errorCallout}>⚠ {addChildError}</div>}
-              </div>
+              <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: 0 }}>
+                対象: {childId ? childById.get(childId)?.nickname ?? "?" : "未選択"}
+                {childId && childById.get(childId) ? `(${gradeLabel(childById.get(childId)!.enrollmentYear)})` : ""}
+                ・記録日 {recordDate}
+                {referencePrevious ? "・過去記録を参照" : "・過去記録は参照しない"}
+              </p>
 
               <div className={styles.saveBar + " " + styles.noPrint}>
                 <input
