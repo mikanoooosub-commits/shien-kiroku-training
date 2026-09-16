@@ -13,7 +13,7 @@ import {
 } from "./record";
 import { deleteRecord, loadRecords, saveRecord } from "./records";
 import { createFacility, getMyFacility, inviteMember, type Facility } from "./facility";
-import { createChild, gradeLabel, listChildren, type Child } from "./children";
+import { createChild, enrollmentYearForGrade, GRADE_OPTIONS, gradeLabel, listChildren, type Child } from "./children";
 import { createClient } from "./supabase-browser";
 
 // このページはユーザーごとのセッション・施設・記録に依存し、共有可能な静的コンテンツを持たないため、
@@ -156,7 +156,9 @@ export default function Home() {
   const [childId, setChildId] = useState<string>("");
   const [showAddChild, setShowAddChild] = useState(false);
   const [newChildNickname, setNewChildNickname] = useState("");
-  const [newChildEnrollmentYear, setNewChildEnrollmentYear] = useState(() => String(new Date().getFullYear()));
+  // 「入学年度」の暗算をスタッフに強いない・書き忘れで意図せず「小1」になることを防ぐため、
+  // 入学年度ではなく現在の学年を選んでもらい、入学年度はそこから逆算する(未選択がデフォルト)。
+  const [newChildGrade, setNewChildGrade] = useState("");
   const [addingChild, setAddingChild] = useState(false);
   const [addChildError, setAddChildError] = useState<string | null>(null);
 
@@ -310,8 +312,9 @@ export default function Home() {
     e.preventDefault();
     if (!facility) return;
     const nickname = newChildNickname.trim();
-    const enrollmentYear = Number(newChildEnrollmentYear);
-    if (!nickname || !Number.isFinite(enrollmentYear)) return;
+    const grade = Number(newChildGrade);
+    if (!nickname || newChildGrade === "" || !Number.isFinite(grade)) return;
+    const enrollmentYear = enrollmentYearForGrade(grade);
     setAddingChild(true);
     setAddChildError(null);
     try {
@@ -631,16 +634,20 @@ export default function Home() {
                 aria-label="児童のニックネーム"
                 required
               />
-              <input
+              <select
                 className={styles.labelInput}
-                style={{ maxWidth: 120 }}
-                type="number"
-                value={newChildEnrollmentYear}
-                onChange={(e) => setNewChildEnrollmentYear(e.target.value)}
-                placeholder="小学校入学年度"
-                aria-label="小学校入学年度"
+                value={newChildGrade}
+                onChange={(e) => setNewChildGrade(e.target.value)}
+                aria-label="現在の学年"
                 required
-              />
+              >
+                <option value="">現在の学年を選択…</option>
+                {GRADE_OPTIONS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
               <button type="submit" className={styles.btn + " " + styles.btnPrimary} disabled={addingChild}>
                 {addingChild ? "登録中…" : "登録"}
               </button>
