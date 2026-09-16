@@ -47,6 +47,7 @@
   - **別施設**のサインアップ済みユーザー(施設E)で `GET /rest/v1/children` / `GET /rest/v1/records` → `200 []`(施設Cの児童「れんくん」・記録4件は返らない)
   - 同ユーザーで他施設の`facility_id`を指定して `POST /rest/v1/children` → `403 / 42501 new row violates row-level security policy for table "children"`
   - 同ユーザーで自施設への `POST` → `201`。直後の `GET` は自施設の1件のみ(ポジティブ側の確認)
+  - 逆方向(施設Cのユーザーから施設Eが見えないこと)も確認: `poc-shien-staff-c@mailinator.com`で`GET /rest/v1/children`・`GET /rest/v1/records` → 施設C(れんくん・記録4件)のみ返り、施設Eの「そらちゃん」「ゆうくん」は含まれない。施設Eへの`POST /rest/v1/children`は`403/42501`で拒否。
   - この検証用に**固定の第三者アカウントを残している**: `poc-shien-facility-e@mailinator.com`(施設「PoC検証用・別施設E」、児童「そらちゃん」)。今後のRLS棚卸しはこのアカウントで行う。パスワードはここに書かない(mailinatorは公開受信箱なので、パスワードリセットもこの宛先では行わない)。
   - 運用メモ: このアカウント作成のため `Allow new users to sign up` を一時的にオンにした。防御3層の1層目なので、検証後はオフに戻す。
 - **境界線はVercelではない**。`サインアップ可否 + GRANT + RLS` の3つがデータの境界で、Vercel AuthenticationはUIを隠すだけ(Vercelを通らないので、Supabase直叩きは止められない)。
