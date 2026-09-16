@@ -47,11 +47,12 @@ flowchart LR
 | `app/supabase-browser.ts` | ブラウザ用Supabaseクライアント(`createBrowserClient`)。anon keyのみ使用。 | クライアント(ブラウザ) |
 | `app/supabase-server.ts` | サーバー用Supabaseクライアント(`createServerClient`)。Server Component/Route Handlerから使う想定(現時点で実利用箇所なし、将来のサーバー側データ取得用に用意)。 | サーバー |
 | `app/facility.ts` | 所属施設の取得・作成・スタッフ招待(`invite_to_facility` RPC呼び出し)。 | クライアント(ブラウザ) |
-| `app/records.ts` | 施設の記録一覧取得・保存・削除。DBから読んだ`record`(jsonb)は`RecordSchema`で検証し、壊れた行は読み捨てる。 | クライアント(ブラウザ) |
+| `app/records.ts` | 施設の記録一覧取得・保存・削除。DBから読んだ`record`(jsonb)は`RecordSchema`で検証し、壊れた行は読み捨てる。`child_id`(対象児童)・`record_date`(記録対象日)もここで読み書きする。 | クライアント(ブラウザ) |
+| `app/children.ts` | 施設の児童マスタ(仮名・ニックネームのみ)の一覧取得・登録。学年は保存せず、`gradeLabel()`が入学年度(`enrollment_year`)から都度算出する(生年月日は持たない)。 | クライアント(ブラウザ) |
 | `app/database.types.ts` | `supabase/schema.sql`と対応する手書きのTypeScript型。プロジェクト作成後は`supabase gen types`で生成し直すこと。 | 共有 |
 | `app/api/structure/route.ts` | リクエストをzodで検証し、OpenAI Responses APIを呼び出し、応答を`RecordSchema`で検証して返す。`OPENAI_API_KEY`はここでのみ使用。 | サーバー |
 | `proxy.ts` | 全リクエストでSupabaseセッションを検証・更新。未ログインなら`/login`へリダイレクト、未ログインでの`/api/*`アクセスは401を返す。 | サーバー(Edge/Nodeランタイム、リクエストの前段) |
-| `supabase/schema.sql` / `rollback.sql` | `facilities` / `facility_members` / `records`テーブル、RLSポリシー、招待用RPC(`invite_to_facility`)を定義する冪等なDDL。db-changeスキルの方針に従う。 | Supabase(Postgres) |
+| `supabase/schema.sql` / `rollback.sql` | `facilities` / `facility_members` / `records` / `children`テーブル、RLSポリシー、招待用RPC(`invite_to_facility`)を定義する冪等なDDL。db-changeスキルの方針に従う。 | Supabase(Postgres) |
 
 ## データフローと信頼境界
 
@@ -61,7 +62,7 @@ flowchart LR
 | サーバー → OpenAI(③) | — (送信のみ) | **未解決**: 児童の健康情報等を含みうる自由文をOpenAI社に送信する。個人情報保護要件は`../research/itabashi-2026-08/poc/poc-spec.html` §7で未検証と明記済み。PoC期間中はダミーデータのみを使う運用でカバーしている。 |
 | OpenAI → サーバー(④) | `zodTextFormat(RecordSchema, ...)` + `response.output_parsed` | 外部APIの応答は形式が保証されていない前提で扱う。 |
 | サーバー → ブラウザ(⑤) | `ApiResponseSchema.safeParse`(`page.tsx`) | 自前のAPIでもネットワークを跨ぐ以上、実際に検証してから使う。 |
-| ブラウザ ⇄ Supabase(⑥⑦) | **RLS**(`supabase/schema.sql`)。`records`/`facility_members`/`facilities`はすべて`is_facility_member()`ベースのポリシーで、自分が所属する施設の行しか読み書きできない。読み出し後も`SavedRecordSchema`/`RecordSchema`で再検証。 | Supabaseではクライアントが直接DBを叩く構成のため、**RLSが唯一のアクセス制御**(db-changeスキル原則7)。加えてDBの内容も「壊れていない」保証はない(手動編集・アプリ更新途中など)ため、読み出し時にzodで再検証する。 |
+| ブラウザ ⇄ Supabase(⑥⑦) | **RLS**(`supabase/schema.sql`)。`records`/`facility_members`/`facilities`/`children`はすべて`is_facility_member()`ベースのポリシーで、自分が所属する施設の行しか読み書きできない。読み出し後も`SavedRecordSchema`/`RecordSchema`で再検証。 | Supabaseではクライアントが直接DBを叩く構成のため、**RLSが唯一のアクセス制御**(db-changeスキル原則7)。加えてDBの内容も「壊れていない」保証はない(手動編集・アプリ更新途中など)ため、読み出し時にzodで再検証する。 |
 
 ## 認証・アクセス範囲の設計
 

@@ -14,6 +14,8 @@ function rowToSavedRecord(row: Row): SavedRecord | null {
     label: row.label,
     sourceText: row.source_text,
     record: row.record,
+    childId: row.child_id,
+    recordDate: row.record_date,
   };
   // DBの内容も「壊れていない」保証はない(手動編集・アプリ更新途中など)ため、
   // localStorage時代と同じくzodで1件ずつ検証し、壊れたものは読み捨てる。
@@ -25,7 +27,7 @@ function rowToSavedRecord(row: Row): SavedRecord | null {
 export async function loadRecords(supabase: Client, facilityId: string): Promise<RecordsResult<SavedRecord[]>> {
   const { data, error } = await supabase
     .from("records")
-    .select("id, facility_id, created_by, label, source_text, record, saved_at, updated_at")
+    .select("id, facility_id, created_by, label, source_text, record, child_id, record_date, saved_at, updated_at")
     .eq("facility_id", facilityId)
     .order("saved_at", { ascending: false });
 
@@ -49,6 +51,8 @@ export async function saveRecord(
       label: entry.label,
       source_text: entry.sourceText,
       record: entry.record as unknown as Json,
+      child_id: entry.childId,
+      record_date: entry.recordDate,
       saved_at: entry.savedAt,
     },
     { onConflict: "id" }

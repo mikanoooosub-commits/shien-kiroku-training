@@ -1,7 +1,18 @@
 -- rollback.sql
 -- schema.sql を取り消す。破壊的操作(records テーブルの削除でデータが失われる)。
 -- 実行前にバックアップを取ること(Supabase Freeプランには日次バックアップが無い)。
--- 依存関係の逆順(records → facility_members → facilities、関数・トリガーは先に)で削除する。
+-- 依存関係の逆順(records → children → facility_members → facilities、関数・トリガーは先に)で削除する。
+
+-- records.child_id が children を参照しているため、children を消す前に列を落とす。
+alter table records drop column if exists record_date;
+alter table records drop column if exists child_id;
+
+drop policy if exists "children: members can delete" on children;
+drop policy if exists "children: members can update" on children;
+drop policy if exists "children: members can insert" on children;
+drop policy if exists "children: members can select" on children;
+
+drop table if exists children;
 
 drop trigger if exists records_set_updated_at on records;
 drop function if exists set_updated_at();

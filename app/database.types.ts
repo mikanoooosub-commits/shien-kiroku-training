@@ -61,6 +61,8 @@ export type Database = {
           label: string;
           source_text: string;
           record: Json;
+          child_id: string | null;
+          record_date: string;
           saved_at: string;
           updated_at: string;
         };
@@ -71,6 +73,8 @@ export type Database = {
           label?: string;
           source_text?: string;
           record: Json;
+          child_id?: string | null;
+          record_date?: string;
           saved_at?: string;
           updated_at?: string;
         };
@@ -81,8 +85,34 @@ export type Database = {
           label?: string;
           source_text?: string;
           record?: Json;
+          child_id?: string | null;
+          record_date?: string;
           saved_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      children: {
+        Row: {
+          id: string;
+          facility_id: string;
+          nickname: string;
+          enrollment_year: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          facility_id: string;
+          nickname: string;
+          enrollment_year: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          facility_id?: string;
+          nickname?: string;
+          enrollment_year?: number;
+          created_at?: string;
         };
         Relationships: [];
       };

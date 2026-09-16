@@ -71,6 +71,10 @@ export const SavedRecordSchema = z.object({
   label: z.string(),
   sourceText: z.string(),
   record: RecordSchema,
+  /** 対象児童のID。未設定(古い記録・児童未選択)は null。 */
+  childId: z.string().nullable(),
+  /** 記録対象日(yyyy-mm-dd)。作成/更新日時(savedAt)とは別に、いつの出来事の記録かを表す。 */
+  recordDate: z.string().min(1),
 });
 
 export type SavedRecord = z.infer<typeof SavedRecordSchema>;

@@ -13,6 +13,7 @@ import {
 } from "./record";
 import { deleteRecord, loadRecords, saveRecord } from "./records";
 import { createFacility, getMyFacility, inviteMember, type Facility } from "./facility";
+import { createChild, gradeLabel, listChildren, type Child } from "./children";
 import { createClient } from "./supabase-browser";
 
 // このページはユーザーごとのセッション・施設・記録に依存し、共有可能な静的コンテンツを持たないため、
@@ -31,6 +32,13 @@ function newId(): string {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 今日の日付(yyyy-mm-dd)。記録日入力のデフォルト値に使う。 */
+function todayStr(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /**
@@ -129,6 +137,24 @@ export default function Home() {
   // 編集内容はDOM側にあるため、保存済み記録を読み込んだときは項目を作り直して確実に反映させる。
   const [recordSeq, setRecordSeq] = useState(0);
 
+  // 児童マスタ(施設単位・仮名運用)。記録が「誰の」ものかを持たせるため保存時に必須で選ぶ。
+  const [children, setChildren] = useState<Child[]>([]);
+  const [childrenError, setChildrenError] = useState<string | null>(null);
+  const [childId, setChildId] = useState<string>("");
+  const [showAddChild, setShowAddChild] = useState(false);
+  const [newChildNickname, setNewChildNickname] = useState("");
+  const [newChildEnrollmentYear, setNewChildEnrollmentYear] = useState(() => String(new Date().getFullYear()));
+  const [addingChild, setAddingChild] = useState(false);
+  const [addChildError, setAddChildError] = useState<string | null>(null);
+
+  // 記録対象日(「いつの記録か」。保存日時とは別で、過去日も指定できる)。
+  const [recordDate, setRecordDate] = useState(() => todayStr());
+
+  // 保存済み記録一覧の絞り込み(児童・日付)。
+  const [filterChildId, setFilterChildId] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
   // 印刷: 画面のボタン経由でもブラウザのCtrl+P経由でも、出力日時が入るようにする。
   const [printedAt, setPrintedAt] = useState("");
 
@@ -200,6 +226,11 @@ export default function Home() {
       if (!active) return;
       if (recordsResult.ok) setSaved(recordsResult.value);
       else setStorageNote(recordsResult.reason);
+
+      const childrenResult = await listChildren(supabase, facilityResult.value.id);
+      if (!active) return;
+      if (childrenResult.ok) setChildren(childrenResult.value);
+      else setChildrenError(childrenResult.reason);
     })();
 
     return () => {
@@ -258,6 +289,29 @@ export default function Home() {
     }
   }
 
+  async function handleCreateChild(e: React.FormEvent) {
+    e.preventDefault();
+    if (!facility) return;
+    const nickname = newChildNickname.trim();
+    const enrollmentYear = Number(newChildEnrollmentYear);
+    if (!nickname || !Number.isFinite(enrollmentYear)) return;
+    setAddingChild(true);
+    setAddChildError(null);
+    try {
+      const result = await createChild(supabase, facility.id, nickname, enrollmentYear);
+      if (!result.ok) {
+        setAddChildError(result.reason);
+        return;
+      }
+      setChildren((prev) => [...prev, result.value].sort((a, b) => a.nickname.localeCompare(b.nickname, "ja")));
+      setChildId(result.value.id);
+      setNewChildNickname("");
+      setShowAddChild(false);
+    } finally {
+      setAddingChild(false);
+    }
+  }
+
   function toggleMic() {
     const recognition = recognitionRef.current;
     if (!recognition) return;
@@ -286,6 +340,8 @@ export default function Home() {
     setLabel("");
     setActiveId(null);
     setSaveFlash(null);
+    setChildId("");
+    setRecordDate(todayStr());
   }
 
   async function handleGenerate() {
@@ -331,13 +387,15 @@ export default function Home() {
   }
 
   async function handleSave() {
-    if (!record || !facility) return;
+    if (!record || !facility || !childId) return;
     const entry: SavedRecord = {
       id: activeId ?? newId(),
       savedAt: new Date().toISOString(),
       label: label.trim(),
       sourceText: text.trim(),
       record: harvest(record),
+      childId,
+      recordDate,
     };
     setSaveBusy(true);
     try {
@@ -362,6 +420,8 @@ export default function Home() {
     setIncidentMismatches(findIncidentMismatches(entry.sourceText, entry.record));
     setLabel(entry.label);
     setActiveId(entry.id);
+    setChildId(entry.childId ?? "");
+    setRecordDate(entry.recordDate);
     setError(null);
     setSaveFlash(null);
     setRecordSeq((n) => n + 1);
@@ -412,6 +472,13 @@ export default function Home() {
   }
 
   const charCount = text.length;
+  const childById = new Map(children.map((c) => [c.id, c]));
+  const filteredSaved = saved.filter((entry) => {
+    if (filterChildId && entry.childId !== filterChildId) return false;
+    if (filterDateFrom && entry.recordDate < filterDateFrom) return false;
+    if (filterDateTo && entry.recordDate > filterDateTo) return false;
+    return true;
+  });
 
   // 施設に未所属の場合は、施設の作成を促す画面だけを表示する。
   if (facility === null) {
@@ -635,6 +702,74 @@ export default function Home() {
                 </div>
               )}
 
+              <div className={styles.saveBar + " " + styles.noPrint} style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <p className={styles.inputNotice} style={{ margin: 0 }}>
+                  児童も<strong>仮名・ニックネーム</strong>で登録してください(本名や個人を特定できる情報は入力しないでください)。
+                </p>
+                <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+                  <select
+                    className={styles.labelInput}
+                    value={childId}
+                    onChange={(e) => setChildId(e.target.value)}
+                    aria-label="対象児童"
+                  >
+                    <option value="">対象児童を選択…</option>
+                    {children.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nickname}({gradeLabel(c.enrollmentYear)})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={styles.labelInput}
+                    type="date"
+                    value={recordDate}
+                    onChange={(e) => setRecordDate(e.target.value)}
+                    aria-label="記録対象日"
+                  />
+                  <button type="button" className={styles.btn} onClick={() => setShowAddChild((v) => !v)}>
+                    {showAddChild ? "キャンセル" : "+ 児童を追加"}
+                  </button>
+                </div>
+                {children.length === 0 && !showAddChild && (
+                  <p className={styles.archiveNote} style={{ margin: 0 }}>
+                    まだ児童が登録されていません。「+ 児童を追加」から登録してください。
+                  </p>
+                )}
+                {childrenError && <div className={styles.errorCallout}>⚠ {childrenError}</div>}
+                {showAddChild && (
+                  <form
+                    onSubmit={handleCreateChild}
+                    className={styles.saveBar}
+                    style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+                  >
+                    <input
+                      className={styles.labelInput}
+                      type="text"
+                      value={newChildNickname}
+                      onChange={(e) => setNewChildNickname(e.target.value)}
+                      placeholder="ニックネーム(例: れんくん)"
+                      aria-label="児童のニックネーム"
+                      required
+                    />
+                    <input
+                      className={styles.labelInput}
+                      style={{ maxWidth: 120 }}
+                      type="number"
+                      value={newChildEnrollmentYear}
+                      onChange={(e) => setNewChildEnrollmentYear(e.target.value)}
+                      placeholder="小学校入学年度"
+                      aria-label="小学校入学年度"
+                      required
+                    />
+                    <button type="submit" className={styles.btn + " " + styles.btnPrimary} disabled={addingChild}>
+                      {addingChild ? "登録中…" : "登録"}
+                    </button>
+                  </form>
+                )}
+                {addChildError && <div className={styles.errorCallout}>⚠ {addChildError}</div>}
+              </div>
+
               <div className={styles.saveBar + " " + styles.noPrint}>
                 <input
                   className={styles.labelInput}
@@ -648,7 +783,8 @@ export default function Home() {
                   type="button"
                   className={styles.btn + " " + styles.btnPrimary}
                   onClick={handleSave}
-                  disabled={saveBusy}
+                  disabled={saveBusy || !childId}
+                  title={!childId ? "先に対象児童を選択してください" : undefined}
                 >
                   {saveBusy ? "保存中…" : activeId ? "上書き保存" : "この記録を保存"}
                 </button>
@@ -671,14 +807,64 @@ export default function Home() {
         <p className={styles.archiveNote}>
           保存先はSupabase(施設単位で共有)です。同じ施設のスタッフは全員この一覧を見られます。
         </p>
+
+        <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+          <select
+            className={styles.labelInput}
+            value={filterChildId}
+            onChange={(e) => setFilterChildId(e.target.value)}
+            aria-label="児童で絞り込み"
+          >
+            <option value="">児童で絞り込み: すべて</option>
+            {children.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nickname}({gradeLabel(c.enrollmentYear)})
+              </option>
+            ))}
+          </select>
+          <input
+            className={styles.labelInput}
+            type="date"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+            aria-label="この日以降(絞り込み)"
+            title="この日以降"
+          />
+          <span aria-hidden="true">〜</span>
+          <input
+            className={styles.labelInput}
+            type="date"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+            aria-label="この日以前(絞り込み)"
+            title="この日以前"
+          />
+          {(filterChildId || filterDateFrom || filterDateTo) && (
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => {
+                setFilterChildId("");
+                setFilterDateFrom("");
+                setFilterDateTo("");
+              }}
+            >
+              絞り込みを解除
+            </button>
+          )}
+        </div>
+
         {saved.length === 0 ? (
           <div className={styles.emptyState}>
             まだ保存された記録はありません。上のドラフトを確認・修正してから「この記録を保存」を押してください。
           </div>
+        ) : filteredSaved.length === 0 ? (
+          <div className={styles.emptyState}>絞り込み条件に一致する記録がありません。</div>
         ) : (
           <ul className={styles.archiveList}>
-            {saved.map((entry) => {
+            {filteredSaved.map((entry) => {
               const summary = entry.record.activity || entry.sourceText;
+              const child = entry.childId ? childById.get(entry.childId) : undefined;
               return (
                 <li
                   key={entry.id}
@@ -687,7 +873,10 @@ export default function Home() {
                   <div className={styles.archiveMain}>
                     <div className={styles.archiveHead}>
                       <span className={styles.archiveLabel}>{entry.label || "(見出しなし)"}</span>
-                      <span className={styles.archiveTime}>{formatSavedAt(entry.savedAt)}</span>
+                      <span className={styles.archiveTime}>
+                        {child ? `${child.nickname}(${gradeLabel(child.enrollmentYear)})` : "対象児童未設定"} ·{" "}
+                        {entry.recordDate} 記録 · 保存 {formatSavedAt(entry.savedAt)}
+                      </span>
                     </div>
                     <p className={styles.archiveSummary}>{summary.slice(0, 90) || "(本文なし)"}</p>
                   </div>

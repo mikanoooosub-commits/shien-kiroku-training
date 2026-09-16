@@ -183,11 +183,64 @@ create policy "records: members can delete" on records
   using (is_facility_member(facility_id));
 
 -- ============================================================
+-- children: 施設に所属する児童マスタ(仮名・ニックネームのみ)。
+-- 実名・生年月日は持たない(データ最小化)。学年は enrollment_year(入学年度)
+-- からアプリ側(app/children.ts の gradeLabel)で都度算出し、DBには保持しない。
+-- ============================================================
+create table if not exists children (
+  id uuid primary key default gen_random_uuid(),
+  facility_id uuid not null references facilities (id) on delete cascade,
+  nickname text not null,
+  enrollment_year integer not null,
+  created_at timestamptz not null default now()
+);
+
+comment on table children is '施設に所属する児童マスタ。氏名・生年月日は持たない(仮名・ニックネームのみ、学年は入学年度から都度算出)。';
+
+create index if not exists children_facility_id_idx on children (facility_id);
+
+alter table children enable row level security;
+
+drop policy if exists "children: members can select" on children;
+create policy "children: members can select" on children
+  for select
+  using (is_facility_member(facility_id));
+
+drop policy if exists "children: members can insert" on children;
+create policy "children: members can insert" on children
+  for insert
+  to authenticated
+  with check (is_facility_member(facility_id));
+
+drop policy if exists "children: members can update" on children;
+create policy "children: members can update" on children
+  for update
+  using (is_facility_member(facility_id))
+  with check (is_facility_member(facility_id));
+
+drop policy if exists "children: members can delete" on children;
+create policy "children: members can delete" on children
+  for delete
+  using (is_facility_member(facility_id));
+
+-- ============================================================
+-- records: 対象児童(child_id)・記録対象日(record_date)を追加。
+-- 既存の記録は child_id = NULL(未設定として表示)、record_date は
+-- 適用時点の日付が入る(以後の保存はアプリが明示的に指定する)。
+-- ============================================================
+alter table records add column if not exists child_id uuid references children (id) on delete restrict;
+alter table records add column if not exists record_date date not null default current_date;
+
+create index if not exists records_facility_id_record_date_idx on records (facility_id, record_date desc);
+create index if not exists records_child_id_idx on records (child_id);
+
+-- ============================================================
 -- grant: RLSは行を絞るだけで、テーブル自体への権限は別途必要
 -- ============================================================
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on facilities to authenticated;
 grant select, insert on facility_members to authenticated;
 grant select, insert, update, delete on records to authenticated;
+grant select, insert, update, delete on children to authenticated;
 grant execute on function invite_to_facility(uuid, text) to authenticated;
 grant execute on function is_facility_member(uuid) to authenticated;
