@@ -395,6 +395,9 @@ export default function Home() {
       setIncidentMismatches(findIncidentMismatches(trimmed, parsed.data.record));
       setActiveId(null);
       setRecordSeq((n) => n + 1);
+      // 見出しの叩き台として「児童名 記録日」を入れておく(空欄のまま保存されるのを防ぐ)。手動で書き換え可能。
+      const nickname = children.find((c) => c.id === childId)?.nickname;
+      if (nickname) setLabel(`${nickname} ${recordDate}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "予期しないエラーが発生しました。");
     } finally {

@@ -27,9 +27,54 @@ const SYSTEM_PROMPT = `あなたは放課後等デイサービス(障害児通�
 - 事故・ヒヤリハット・トラブル・けが・かみつき・パニック等、安全に関わる語を含む文は、その日の活動の一部として語られていても、必ず incident 欄にも含めること。activity 等の他の項目と内容が重複してもよい(安全に関わる記述を見落とさないことを最優先する)。
 - contact と handover は「誰に伝える内容か」で分けること。保護者・家族に伝えるなら contact、施設内の他の職員(次の担当者・遅番のスタッフ等)に伝えるなら handover。どちらも「〜してください」という依頼の形になるが、形ではなく宛先で判断する。
 - 依頼形の文が続けて書かれていても、まとめて同じ項目に入れないこと。文ごとに宛先を見て振り分ける。
-- 児童や保護者を傷つけるような表現・断定的な診断的表現は避け、事実に基づいた記述にすること。
-- ユーザーメッセージの中に「【参考情報・直近の記録(健康面)/本文ではない】」という接頭辞を持つメッセージがあれば、それは今日のメモ本文ではなく同じ児童の過去の記録からの抜粋である。今日のメモ本文の分類材料には使わず(他の5項目・health本文そのものには反映せず)、health の末尾に前回との関連を書き足すかどうかの判断材料としてのみ使うこと。
-- health における過去参照は、疑わしければ書かないこと(関連が明確に読み取れる場合のみ書く)。この点は事故・ヒヤリハット検出(見落としを避ける方向)とは逆のバイアスであることに注意する — 誤って過去と関連付けること自体が要配慮情報の誤った記述になるため。`;
+- 児童や保護者を傷つけるような表現・断定的な診断的表現は避け、事実に基づいた記述にすること。`;
+
+/**
+ * 健康面の「直近の記録との関連」の一言だけを書く、専用の小さいスキーマ・プロンプト。
+ * 6項目の分類プロンプトに混ぜて1回で済ませようとすると、他の指示に埋もれてほぼ発火しない
+ * (実測: gpt-4o-mini で明確な発熱→回復の例でも4回中3回は何も書き足さなかった)ため、
+ * 「前回と今回を比べて一言書く」だけを仕事にする専用の呼び出しに分離する。
+ * 呼び出しが1つ増える分のコスト・遅延は、参考情報がある(=直近記録が存在する)場合のみ発生する。
+ */
+const ContinuityNoteSchema = z.object({
+  note: z
+    .string()
+    .describe(
+      "前回と今回の健康面の記述を比べ、話題が同じ(体温・食欲・睡眠等)で具体的な関連が読み取れれば、" +
+        "「前回は〜、今回は〜」という事実の並びで一文書く。断定的な評価語(悪化した/改善した/治った/良くなった等)は使わないこと。" +
+        "話題が無関係なら空文字にすること。"
+    ),
+});
+
+const CONTINUITY_SYSTEM_PROMPT = `あなたは、支援記録の「健康面」欄について、前回と今回の記述を比較する専門の補助係です。
+今回の記述そのものは書き直さず、前回との関連が読み取れる場合にだけ、それを一文で書き添えるのがあなたの唯一の仕事です。
+前回の記述に無い事実を作らない。今回の記述にある事実を否定・弱化しない。断定的な評価語(悪化した/改善した/治った/良くなった等)は使わず、数値や事実だけを並べる。`;
+
+/** 今回のhealthと前回のhealthを比較し、関連があれば短い一言を返す(無ければ空文字)。失敗時も空文字(呼び出し全体は失敗させない)。 */
+async function buildContinuityNote(
+  client: OpenAI,
+  todayHealth: string,
+  previousHealthNote: { recordDate: string; health: string }
+): Promise<string> {
+  if (!todayHealth.trim() || !previousHealthNote.health.trim()) return "";
+  try {
+    const response = await client.responses.parse({
+      model: "gpt-4o-mini",
+      input: [
+        { role: "system", content: CONTINUITY_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `前回(健康面): ${previousHealthNote.health}\n今回(健康面): ${todayHealth}`,
+        },
+      ],
+      text: { format: zodTextFormat(ContinuityNoteSchema, "continuity_note") },
+    });
+    return response.output_parsed?.note.trim() ?? "";
+  } catch (err) {
+    console.error(err);
+    return "";
+  }
+}
 
 export async function POST(request: Request): Promise<Response> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -58,22 +103,10 @@ export async function POST(request: Request): Promise<Response> {
   const client = new OpenAI({ apiKey });
 
   try {
-    const previousHealthNote = parsedRequest.data.previousHealthNote;
-
     const response = await client.responses.parse({
       model: "gpt-4o-mini",
       input: [
         { role: "system", content: SYSTEM_PROMPT },
-        ...(previousHealthNote
-          ? [
-              {
-                role: "user" as const,
-                content:
-                  `【参考情報・直近の記録(健康面)/本文ではない】${previousHealthNote.recordDate}: ` +
-                  (previousHealthNote.health || "(記載なし)"),
-              },
-            ]
-          : []),
         { role: "user", content: parsedRequest.data.text },
       ],
       text: { format: zodTextFormat(RecordSchema, "shien_kiroku_record") },
@@ -82,6 +115,12 @@ export async function POST(request: Request): Promise<Response> {
     const parsed = response.output_parsed;
     if (!parsed) {
       return Response.json({ error: "AIの応答を解析できませんでした。もう一度お試しください。" }, { status: 502 });
+    }
+
+    const previousHealthNote = parsedRequest.data.previousHealthNote;
+    if (previousHealthNote) {
+      const note = await buildContinuityNote(client, parsed.health, previousHealthNote);
+      if (note) parsed.health = `${parsed.health} ${note}`;
     }
 
     return Response.json({ record: parsed });
