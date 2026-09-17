@@ -63,13 +63,12 @@
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
-  /* overflow-x: hidden 単体だと、CSSの仕様上 overflow-y が自動的に auto 扱いになり
-     (どちらかがvisible以外だと、visible側もautoとして扱われる)、html/bodyが
-     独自のスクロールコンテナになってしまう。これが position: sticky の基準(ビューポート)を
-     ずらし、.stickyHeader(ヘッダー+タブバー)が固定されない不具合の原因だったため、
-     overflow-y を明示的に visible に戻す。 */
-  overflow-y: visible;
+  /* 横スクロール防止に overflow-x: hidden を使うと、html/body が「スクロールコンテナ」
+     扱いになり、ページ内のどこにある position: sticky 要素も効かなくなる
+     (本番環境でposition:stickyの要素を直接測定して確認済みの実在する不具合)。
+     overflow: clip は見た目の切り詰めは hidden と同じだが、
+     スクロールコンテナを作らないため sticky を壊さない。 */
+  overflow-x: clip;
 }
 
 body {
