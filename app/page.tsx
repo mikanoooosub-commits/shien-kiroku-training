@@ -742,39 +742,41 @@ export default function Home() {
 
   return (
     <div className={styles.wrap}>
-      <header className={styles.masthead + " " + styles.noPrint}>
-        <div>
-          <p className={styles.eyebrow}>PoC Prototype · 本番構成</p>
-          <h1 className={styles.title}>AI記録支援</h1>
-          <p className={styles.dek}>
-            職員がその場で話した・書いた内容を、生成AI(OpenAI gpt-4o-mini)が6項目へ自動で振り分ける。
-          </p>
-        </div>
-        <div className={styles.metaRow}>
-          <span>施設: {facility.name}</span>
-          <span>{userEmail ?? ""}</span>
-          <button type="button" className={styles.btn} onClick={handleSignOut}>
-            ログアウト
-          </button>
-        </div>
-      </header>
+      <div className={styles.stickyHeader + " " + styles.noPrint}>
+        <header className={styles.masthead}>
+          <div>
+            <p className={styles.eyebrow}>PoC Prototype · 本番構成</p>
+            <h1 className={styles.title}>AI記録支援</h1>
+            <p className={styles.dek}>
+              職員がその場で話した・書いた内容を、生成AI(OpenAI gpt-4o-mini)が6項目へ自動で振り分ける。
+            </p>
+          </div>
+          <div className={styles.metaRow}>
+            <span>施設: {facility.name}</span>
+            <span>{userEmail ?? ""}</span>
+            <button type="button" className={styles.btn} onClick={handleSignOut}>
+              ログアウト
+            </button>
+          </div>
+        </header>
 
-      <nav className={styles.tabBar + " " + styles.noPrint} role="tablist" aria-label="画面切り替え">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            id={`tab-${t.key}`}
-            aria-controls={`tabpanel-${t.key}`}
-            aria-selected={activeTab === t.key}
-            className={styles.tabBtn + (activeTab === t.key ? " " + styles.tabBtnActive : "")}
-            onClick={() => setActiveTab(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+        <nav className={styles.tabBar} role="tablist" aria-label="画面切り替え">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              id={`tab-${t.key}`}
+              aria-controls={`tabpanel-${t.key}`}
+              aria-selected={activeTab === t.key}
+              className={styles.tabBtn + (activeTab === t.key ? " " + styles.tabBtnActive : "")}
+              onClick={() => setActiveTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {/* ===== 書く: 職員の入力 → AI分類 → 保存 ===== */}
       <div
@@ -1019,7 +1021,7 @@ export default function Home() {
             <span className={styles.panelSub}>Archive · {facility.name} 内 {saved.length}件</span>
           </div>
           <p className={styles.archiveNote}>
-            保存先はSupabase(施設単位で共有)です。同じ施設のスタッフは全員この一覧を見られます。「プレビュー」を押すと右側に表示されます。
+            同じ施設のスタッフ全員が見られる一覧です。記録をクリックすると右側にプレビューが出ます。
           </p>
 
           <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
@@ -1086,7 +1088,7 @@ export default function Home() {
                       styles.archiveItem + " " + (entry.id === previewEntry?.id ? styles.archiveItemActive : "")
                     }
                   >
-                    <div className={styles.archiveMain}>
+                    <button type="button" className={styles.archiveMainBtn} onClick={() => setPreviewEntry(entry)}>
                       <div className={styles.archiveHead}>
                         <span className={styles.archiveLabel}>{entry.label || "(見出しなし)"}</span>
                         <span className={styles.archiveTime}>
@@ -1095,15 +1097,8 @@ export default function Home() {
                         </span>
                       </div>
                       <p className={styles.archiveSummary}>{summary.slice(0, 90) || "(本文なし)"}</p>
-                    </div>
+                    </button>
                     <div className={styles.archiveActions}>
-                      <button
-                        type="button"
-                        className={styles.btn + " " + styles.copyBtn}
-                        onClick={() => setPreviewEntry(entry)}
-                      >
-                        プレビュー
-                      </button>
                       <button
                         type="button"
                         className={styles.btn + " " + styles.copyBtn}
@@ -1113,7 +1108,7 @@ export default function Home() {
                       </button>
                       <button
                         type="button"
-                        className={styles.btn + " " + styles.copyBtn}
+                        className={styles.btn + " " + styles.copyBtn + " " + styles.btnDanger}
                         onClick={() => handleDelete(entry)}
                       >
                         削除

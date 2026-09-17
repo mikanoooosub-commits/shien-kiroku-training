@@ -4,14 +4,24 @@
   padding: 40px 24px 80px;
 }
 
+/* masthead+タブバーを画面上部に固定し、スクロールしても常にどのタブか分かるようにする。
+   背景はbodyと同じ--bgにして、下を流れるコンテンツが透けないようにする。 */
+.stickyHeader {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+}
+
+/* masthead+タブバーは.stickyHeaderで画面上部に固定するため、常時表示され続けても
+   圧迫感が出ないよう、単独ページ内での見た目より詰めた余白にしている。区切り線は
+   直下の.tabBar(またはフォーム側の個別スタイル)が担うため、ここでは持たない。 */
 .masthead {
-  padding: 0 0 28px;
-  border-bottom: 1px solid var(--rule);
-  margin-bottom: 28px;
+  padding: 0 0 16px;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 20px 32px;
+  gap: 14px 32px;
   align-items: flex-end;
 }
 .eyebrow {
@@ -268,6 +278,14 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+/* 削除など元に戻せない操作だけ、他のボタンより控えめな色にして誤クリックを減らす。 */
+.btnDanger {
+  color: var(--ink-faint);
+}
+.btnDanger:hover {
+  color: var(--bad);
+  border-color: var(--bad);
 }
 .recDot {
   width: 8px;
@@ -565,8 +583,28 @@
   border-color: var(--accent);
   background: var(--accent-soft);
 }
-.archiveMain {
+/* 一覧の行はこのボタンをクリックしてプレビューを開く(装飾はボタンらしさを消し、テキスト領域に見せる)。 */
+.archiveMainBtn {
+  flex: 1 1 auto;
   min-width: 0;
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.archiveMainBtn:hover .archiveLabel,
+.archiveMainBtn:focus-visible .archiveLabel {
+  color: var(--accent-ink);
+}
+.archiveMainBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .archiveHead {
   display: flex;
