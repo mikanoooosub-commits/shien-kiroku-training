@@ -30,7 +30,8 @@ const MONITORING_SYSTEM_PROMPT = `あなたは放課後等デイサービス(障
 - 根拠にできる記録が一つも見つからない項目は、無理に何か書かず「該当する記録なし」とだけ書くこと。
 - 保護者・本人との面接の実施状況や、個別支援計画の変更の要否についての判断は、この下書きの対象外である。それらについて一切言及しないこと(職員が別途記入する)。
 - 児童や保護者を傷つけるような表現・断定的な診断的表現は避け、事実に基づいた記述にすること。
-- 文体は、記録の文体に関わらず、必ず「ですます調」に統一して書くこと。`;
+- 文体は、記録の文体に関わらず、必ず「ですます調」に統一して書くこと。
+- goalEvaluations 配列は、入力された「支援目標一覧」と必ず同じ件数・同じ順序で出力すること。目標を1件も省略したり、まとめたり、増やしたりしないこと(1つの目標に複数のエピソードがあっても、その目標の evaluation 1件にまとめて書く)。`;
 
 /** 記録を日付順の「YYYY-MM-DD 項目名: 内容 / 項目名: 内容」形式のテキストへ整形する(空文字項目は省略)。 */
 function buildTranscript(records: SavedRecord[]): string {
@@ -87,27 +88,39 @@ export async function POST(request: Request): Promise<Response> {
 
   const transcript = buildTranscript(recordsResult.value);
   const goalsText = goals.map((g, i) => `${i + 1}. [${g.category}] ${g.text}`).join("\n");
-  const userMessage = `# 支援目標一覧\n${goalsText}\n\n# 時系列の記録データ(${dateFrom}〜${dateTo})\n${
+  const userMessage = `# 支援目標一覧(合計${goals.length}件。goalEvaluations は必ずこの${goals.length}件と同じ件数・同じ順序で出力すること)\n${goalsText}\n\n# 時系列の記録データ(${dateFrom}〜${dateTo})\n${
     transcript || "(この期間の記録はありません)"
   }`;
 
   const client = new OpenAI({ apiKey });
 
   try {
-    const response = await client.responses.parse({
-      model: "gpt-4o-mini",
-      input: [
-        { role: "system", content: MONITORING_SYSTEM_PROMPT },
-        { role: "user", content: userMessage },
-      ],
-      text: { format: zodTextFormat(MonitoringDraftSchema, "monitoring_draft") },
-    });
-
-    const parsed = response.output_parsed;
-    if (!parsed) {
-      return Response.json({ error: "AIの応答を解析できませんでした。もう一度お試しください。" }, { status: 502 });
+    // 目標数とgoalEvaluations件数の不一致は、生成AI呼び出しである以上まれに起こりうる(1回だけ自動で取り直す)。
+    // 取り直しても解消しない場合のみ、職員に再実行してもらう。
+    let parsed: z.infer<typeof MonitoringDraftSchema> | undefined;
+    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+      const response = await client.responses.parse({
+        model: "gpt-4o-mini",
+        input: [
+          { role: "system", content: MONITORING_SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+        text: { format: zodTextFormat(MonitoringDraftSchema, "monitoring_draft") },
+      });
+      const candidate = response.output_parsed;
+      if (candidate && candidate.goalEvaluations.length === goals.length) {
+        parsed = candidate;
+      } else {
+        console.error("monitoring draft mismatch", {
+          attempt,
+          expectedGoals: goals.length,
+          receivedEvaluations: candidate?.goalEvaluations.length ?? null,
+          parsedIsNull: !candidate,
+        });
+      }
     }
-    if (parsed.goalEvaluations.length !== goals.length) {
+
+    if (!parsed) {
       return Response.json(
         { error: "AIの出力が目標数と一致しませんでした。もう一度お試しください。" },
         { status: 502 }
