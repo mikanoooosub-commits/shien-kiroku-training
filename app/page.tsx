@@ -1088,7 +1088,12 @@ export default function Home() {
                       styles.archiveItem + " " + (entry.id === previewEntry?.id ? styles.archiveItemActive : "")
                     }
                   >
-                    <button type="button" className={styles.archiveMainBtn} onClick={() => setPreviewEntry(entry)}>
+                    <button
+                      type="button"
+                      className={styles.archiveMainBtn}
+                      onClick={() => setPreviewEntry(entry)}
+                      aria-label={`${entry.label || "(見出しなし)"}(${entry.recordDate})をプレビュー`}
+                    >
                       <div className={styles.archiveHead}>
                         <span className={styles.archiveLabel}>{entry.label || "(見出しなし)"}</span>
                         <span className={styles.archiveTime}>
