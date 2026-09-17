@@ -1012,13 +1012,14 @@ export default function Home() {
         hidden={activeTab !== "view"}
         className={styles.tabPage}
       >
+        <div className={styles.bench}>
         <section className={styles.archive + " " + styles.noPrint}>
           <div className={styles.panelHead}>
             <span className={styles.panelTitle}>保存した記録</span>
             <span className={styles.panelSub}>Archive · {facility.name} 内 {saved.length}件</span>
           </div>
           <p className={styles.archiveNote}>
-            保存先はSupabase(施設単位で共有)です。同じ施設のスタッフは全員この一覧を見られます。
+            保存先はSupabase(施設単位で共有)です。同じ施設のスタッフは全員この一覧を見られます。「プレビュー」を押すと右側に表示されます。
           </p>
 
           <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
@@ -1125,44 +1126,55 @@ export default function Home() {
           )}
         </section>
 
-        {previewEntry && (
-          <section className={styles.panel} style={{ marginTop: 20 }}>
-            <div className={styles.panelHead + " " + styles.noPrint}>
-              <span className={styles.panelTitle}>プレビュー</span>
-              <button type="button" className={styles.btn} onClick={() => setPreviewEntry(null)}>
-                閉じる
-              </button>
-            </div>
+        <section className={styles.panel}>
+          <div className={styles.panelHead + " " + styles.noPrint}>
+            <span className={styles.panelTitle}>プレビュー</span>
+            <span className={styles.panelSub}>Preview</span>
+          </div>
 
-            <div className={styles.printHeader}>
-              <h2>支援記録(保存済み・プレビュー)</h2>
-              <p>
-                利用者: {previewEntry.label || "(未記入)"} ／ 対象:{" "}
-                {previewEntry.childId ? childById.get(previewEntry.childId)?.nickname ?? "?" : "未設定"} ／ 記録日{" "}
-                {previewEntry.recordDate} ／ 保存 {formatSavedAt(previewEntry.savedAt)} ／ 出力日時: {printedAt}
-              </p>
+          {!previewEntry && (
+            <div className={styles.emptyState}>
+              <span className={styles.glyph}>📋</span>
+              左の一覧から「プレビュー」を選ぶと、ここに記録の内容が表示されます。
             </div>
+          )}
 
-            {CATEGORY_META.map((m) => (
-              <FieldCard
-                key={m.key}
-                label={m.label}
-                value={previewEntry.record[m.key]}
-                editable={false}
-                onCopy={(btn) => copyToClipboard(previewEntry.record[m.key], btn)}
-              />
-            ))}
+          {previewEntry && (
+            <div>
+              <div className={styles.printHeader}>
+                <h2>支援記録(保存済み・プレビュー)</h2>
+                <p>
+                  利用者: {previewEntry.label || "(未記入)"} ／ 対象:{" "}
+                  {previewEntry.childId ? childById.get(previewEntry.childId)?.nickname ?? "?" : "未設定"} ／ 記録日{" "}
+                  {previewEntry.recordDate} ／ 保存 {formatSavedAt(previewEntry.savedAt)} ／ 出力日時: {printedAt}
+                </p>
+              </div>
 
-            <div className={styles.saveBar + " " + styles.noPrint}>
-              <button type="button" className={styles.btn} onClick={() => handleLoad(previewEntry)}>
-                編集する(書くタブへ)
-              </button>
-              <button type="button" className={styles.btn} onClick={printNow}>
-                🖨 印刷 / PDF出力
-              </button>
+              {CATEGORY_META.map((m) => (
+                <FieldCard
+                  key={m.key}
+                  label={m.label}
+                  value={previewEntry.record[m.key]}
+                  editable={false}
+                  onCopy={(btn) => copyToClipboard(previewEntry.record[m.key], btn)}
+                />
+              ))}
+
+              <div className={styles.saveBar + " " + styles.noPrint}>
+                <button type="button" className={styles.btn} onClick={() => setPreviewEntry(null)}>
+                  閉じる
+                </button>
+                <button type="button" className={styles.btn} onClick={() => handleLoad(previewEntry)}>
+                  編集する(書くタブへ)
+                </button>
+                <button type="button" className={styles.btn} onClick={printNow}>
+                  🖨 印刷 / PDF出力
+                </button>
+              </div>
             </div>
-          </section>
-        )}
+          )}
+        </section>
+        </div>
       </div>
 
       {/* ===== モニタリング: 個別支援計画モニタリング(下書き生成) ===== */}
