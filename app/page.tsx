@@ -539,6 +539,18 @@ export default function Home() {
     setMonitoringGoals((prev) => [...prev, { category: GOAL_CATEGORY_OPTIONS[0], text: "" }]);
   }
 
+  function handleClearMonitoring() {
+    setMonitoringChildId("");
+    setMonitoringDateFrom(sixMonthsAgoStr());
+    setMonitoringDateTo(todayStr());
+    setMonitoringPlanRef("");
+    setMonitoringImplementedAt(todayStr());
+    setMonitoringGoals([{ category: GOAL_CATEGORY_OPTIONS[0], text: "" }]);
+    setMonitoringError(null);
+    setMonitoringDraft(null);
+    setMonitoringRecordCount(0);
+  }
+
   function handleRemoveGoal(index: number) {
     setMonitoringGoals((prev) => prev.filter((_, i) => i !== index));
   }
@@ -1186,6 +1198,9 @@ export default function Home() {
         <div className={styles.inputTools + " " + styles.noPrint} style={{ marginTop: 6, marginBottom: 0 }}>
           <button type="button" className={styles.btn} onClick={handleAddGoal}>
             + 目標を追加
+          </button>
+          <button type="button" className={styles.btn} onClick={handleClearMonitoring}>
+            クリア
           </button>
           <button
             type="button"
