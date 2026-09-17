@@ -1,6 +1,6 @@
 # システム構成図
 
-生成日: 2026-09-10(初版)、2026-09-10 Supabase導入で全面改訂、2026-09-17 モニタリングAPI追加・本番稼働状態に更新
+生成日: 2026-09-10(初版)、2026-09-10 Supabase導入で全面改訂、2026-09-17 モニタリングAPI追加・本番稼働状態に更新、2026-09-17 画面をタブ(書く/見る/モニタリング/管理)に分割
 対象: AI記録支援(本番PoC) — `poc-app/`
 
 ## 全体構成
@@ -9,7 +9,7 @@
 flowchart LR
   subgraph Browser["ブラウザ(スタッフの端末)"]
     Speech["Web Speech API\n(音声認識・Chrome/Edgeのみ)"]
-    UI["app/page.tsx\n入力・6項目編集・保存・印刷・モニタリング下書きUI"]
+    UI["app/page.tsx\nタブ(書く/見る/モニタリング/管理)UI"]
     SBClient["@supabase/ssr\ncreateBrowserClient"]
   end
 
@@ -50,7 +50,7 @@ flowchart LR
 | コンポーネント | 役割 | 実行場所 |
 |---|---|---|
 | `app/record.ts` | `RecordSchema`(zod)・`CATEGORY_META`・保存レコード形式(`SavedRecordSchema`)の唯一の定義。個別支援計画モニタリング下書き(`/api/monitoring`)の`MonitoringGoalInputSchema`・`MonitoringDraftSchema`・`MonitoringApiResponseSchema`もここに集約する。 | 共有(サーバー/クライアント両方からimport) |
-| `app/page.tsx` | 入力(テキスト・音声)、AI呼び出しの起動、6項目の表示・直接編集・コピー・保存・印刷、施設作成・招待UI、機械チェック(`findIncidentMismatches`)、児童・記録日による保存済み記録の絞り込み、個別支援計画モニタリング下書き生成UI(セクション4)。セクション2(日々の記録)とセクション4のどちらを印刷するかを`printTarget` stateで切り替える。`force-dynamic`指定(セッション依存でユーザー間共有できる静的コンテンツを持たないため)。 | クライアント(ブラウザ) |
+| `app/page.tsx` | 施設作成前の案内画面を除き、4つのタブ(`activeTab` state)に分けて表示する: 「書く」(入力・AI呼び出し・6項目の表示/直接編集/コピー・保存・印刷)、「見る」(保存済み記録の一覧・児童/記録日による絞り込み・選択した記録の読み取り専用プレビュー・印刷)、「モニタリング」(個別支援計画モニタリング下書き生成UI)、「管理」(児童マスタ登録・施設スタッフ招待)。非アクティブなタブは条件付きレンダリングで消さず、`hidden`属性で常時マウントしたまま非表示にする(6項目・モニタリング5項目の入力欄が`contentEditable`でReact state化されていないため、アンマウントすると未保存の編集内容が失われることを避ける設計)。印刷はこの「非アクティブタブは常にhidden」という性質に任せており、画面に見えているタブの内容だけがそのまま印刷される(旧`printTarget` stateは廃止)。機械チェック(`findIncidentMismatches`)、`force-dynamic`指定(セッション依存でユーザー間共有できる静的コンテンツを持たないため)は従来どおり。 | クライアント(ブラウザ) |
 | `app/login/page.tsx` | メール+パスワードでのログイン・新規登録フォーム。 | クライアント(ブラウザ) |
 | `app/supabase-browser.ts` | ブラウザ用Supabaseクライアント(`createBrowserClient`)。anon keyのみ使用。 | クライアント(ブラウザ) |
 | `app/supabase-server.ts` | サーバー用Supabaseクライアント(`createServerClient`)。`app/api/monitoring/route.ts`がブラウザのセッションCookieを転送してSupabaseへ問い合わせる際に使う(`service_role`は使わない。RLSはユーザーのセッションのまま適用される)。 | サーバー |

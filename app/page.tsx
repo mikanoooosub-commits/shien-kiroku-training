@@ -8,7 +8,6 @@ import {
   ApiResponseSchema,
   CATEGORY_META,
   MonitoringApiResponseSchema,
-  type CategoryKey,
   type MonitoringDraft,
   type SavedRecord,
   type StructuredRecord,
@@ -21,6 +20,15 @@ import { createClient } from "./supabase-browser";
 // このページはユーザーごとのセッション・施設・記録に依存し、共有可能な静的コンテンツを持たないため、
 // ビルド時の静的プリレンダリングを行わない(セッション状態はクライアント側でuseEffect後に読み込む)。
 export const dynamic = "force-dynamic";
+
+/** 画面(タブ)の識別子。「初めて見る人でも今どの作業をしているか迷わない」ため機能ごとに分ける。 */
+type TabKey = "write" | "view" | "monitoring" | "admin";
+const TABS: { key: TabKey; label: string; sub: string }[] = [
+  { key: "write", label: "書く", sub: "Write" },
+  { key: "view", label: "見る", sub: "View" },
+  { key: "monitoring", label: "モニタリング", sub: "Monitoring" },
+  { key: "admin", label: "管理", sub: "Admin" },
+];
 
 function formatSavedAt(iso: string): string {
   const d = new Date(iso);
@@ -129,11 +137,91 @@ interface SpeechRecognitionLike extends EventTarget {
   stop: () => void;
 }
 
+/** コピー操作の視覚フィードバック(ボタンの文字を一時的に変える)。編集欄・プレビュー・モニタリング下書きの3箇所で使う共通処理。 */
+function copyToClipboard(value: string, btn: HTMLButtonElement) {
+  const original = btn.textContent;
+  const reset = (text: string, copied: boolean) => {
+    btn.textContent = text;
+    btn.classList.toggle(styles.copyBtnCopied, copied);
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove(styles.copyBtnCopied);
+    }, 1400);
+  };
+  if (!value) {
+    reset("(空です)", false);
+    return;
+  }
+  navigator.clipboard
+    .writeText(value)
+    .then(() => reset("✓ コピーしました", true))
+    .catch(() => reset("✕ 失敗", false));
+}
+
+/**
+ * 記録6項目のうち1項目を表示するカード。編集モード(書くタブ、contentEditable)と
+ * 読み取り専用モード(見るタブのプレビュー)の両方で使う共通コンポーネント。
+ */
+function FieldCard({
+  label,
+  value,
+  editable,
+  fieldRef,
+  ariaLabel,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  editable: boolean;
+  fieldRef?: (el: HTMLDivElement | null) => void;
+  ariaLabel?: string;
+  onCopy: (btn: HTMLButtonElement) => void;
+}) {
+  const filled = value.trim().length > 0;
+  return (
+    <div className={styles.field}>
+      <div className={styles.fieldHead}>
+        <span className={styles.fieldName}>{label}</span>
+        <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+          <span className={styles.badge + " " + (filled ? styles.badgeAuto : styles.badgeNone)}>
+            {filled ? "自動分類" : "該当なし"}
+          </span>
+          <button
+            type="button"
+            className={styles.btn + " " + styles.copyBtn}
+            onClick={(e) => onCopy(e.currentTarget)}
+          >
+            📋 コピー
+          </button>
+        </div>
+      </div>
+      {editable ? (
+        <div
+          ref={fieldRef}
+          className={styles.fieldBody}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          aria-label={ariaLabel}
+        >
+          {value}
+        </div>
+      ) : (
+        <div className={styles.fieldBody}>{value || "—"}</div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const [supabase] = useState(() => createClient());
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  // 現在表示中の画面(タブ)。
+  const [activeTab, setActiveTab] = useState<TabKey>("write");
 
   // 施設(施設単位で記録を共有する)。undefined=読み込み中、null=未所属。
   const [facility, setFacility] = useState<Facility | null | undefined>(undefined);
@@ -186,14 +274,15 @@ export default function Home() {
   const [filterChildId, setFilterChildId] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  // 見るタブで選んだ記録の読み取り専用プレビュー(その場で印刷/PDF出力するため)。
+  const [previewEntry, setPreviewEntry] = useState<SavedRecord | null>(null);
 
   // 印刷: 画面のボタン経由でもブラウザのCtrl+P経由でも、出力日時が入るようにする。
+  // 印刷対象の切り替えは、非アクティブなタブが常に hidden(=display:none)であることに任せる
+  // (画面に見えているタブの内容だけが自然に印刷される。旧printTarget stateは廃止)。
   const [printedAt, setPrintedAt] = useState("");
-  // セクション2(AIアウトプット)とセクション4(モニタリング下書き)の両方が印刷可能な内容を持つため、
-  // どちらを印刷対象にするかを切り替える(初期値は既存動作を保つため"record")。
-  const [printTarget, setPrintTarget] = useState<"record" | "monitoring">("record");
 
-  // 個別支援計画モニタリング下書き(セクション4)。既存の支援記録とは別機能で、生成結果はDBに保存せず、
+  // 個別支援計画モニタリング下書き(モニタリングタブ)。既存の支援記録とは別機能で、生成結果はDBに保存せず、
   // その場で作って確認・修正のうえ印刷/コピーして使う想定(次回モニタリング時は改めて生成する)。
   const [monitoringChildId, setMonitoringChildId] = useState("");
   const [monitoringDateFrom, setMonitoringDateFrom] = useState(() => sixMonthsAgoStr());
@@ -477,6 +566,7 @@ export default function Home() {
     }
   }
 
+  /** 保存済み記録を編集のため書くタブへ読み込む(見るタブの「編集する」から呼ばれる)。 */
   function handleLoad(entry: SavedRecord) {
     setText(entry.sourceText);
     setRecord(entry.record);
@@ -488,6 +578,7 @@ export default function Home() {
     setError(null);
     setSaveFlash(null);
     setRecordSeq((n) => n + 1);
+    setActiveTab("write");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -506,33 +597,13 @@ export default function Home() {
     const refreshed = await loadRecords(supabase, facility.id);
     if (refreshed.ok) setSaved(refreshed.value);
     if (activeId === entry.id) setActiveId(null);
+    if (previewEntry?.id === entry.id) setPreviewEntry(null);
   }
 
-  function handlePrint() {
-    // 出力日時は beforeprint ハンドラ側で入る。印刷対象をセクション2(記録)に切り替える。
-    setPrintTarget("record");
+  /** 出力日時は beforeprint ハンドラ側で入る。印刷対象は「今アクティブなタブ」がそのまま担う
+   * (非アクティブなタブは常に hidden で画面にも印刷にも出ないため、旧来の printTarget 切り替えは不要)。 */
+  function printNow() {
     window.print();
-  }
-
-  function copyField(key: CategoryKey, btn: HTMLButtonElement) {
-    const value = fieldRefs.current[key]?.textContent?.trim() ?? "";
-    const original = btn.textContent;
-    const reset = (text: string, copied: boolean) => {
-      btn.textContent = text;
-      btn.classList.toggle(styles.copyBtnCopied, copied);
-      setTimeout(() => {
-        btn.textContent = original;
-        btn.classList.remove(styles.copyBtnCopied);
-      }, 1400);
-    };
-    if (!value) {
-      reset("(空です)", false);
-      return;
-    }
-    navigator.clipboard
-      .writeText(value)
-      .then(() => reset("✓ コピーしました", true))
-      .catch(() => reset("✕ 失敗", false));
   }
 
   function handleAddGoal() {
@@ -603,30 +674,8 @@ export default function Home() {
     }
   }
 
-  function handlePrintMonitoring() {
-    setPrintTarget("monitoring");
-    window.print();
-  }
-
   function copyMonitoringField(key: string, btn: HTMLButtonElement) {
-    const value = monitoringFieldRefs.current[key]?.textContent?.trim() ?? "";
-    const original = btn.textContent;
-    const reset = (text: string, copied: boolean) => {
-      btn.textContent = text;
-      btn.classList.toggle(styles.copyBtnCopied, copied);
-      setTimeout(() => {
-        btn.textContent = original;
-        btn.classList.remove(styles.copyBtnCopied);
-      }, 1400);
-    };
-    if (!value) {
-      reset("(空です)", false);
-      return;
-    }
-    navigator.clipboard
-      .writeText(value)
-      .then(() => reset("✓ コピーしました", true))
-      .catch(() => reset("✕ 失敗", false));
+    copyToClipboard(monitoringFieldRefs.current[key]?.textContent?.trim() ?? "", btn);
   }
 
   const charCount = text.length;
@@ -692,7 +741,7 @@ export default function Home() {
   }
 
   return (
-    <div className={styles.wrap} data-print-target={printTarget}>
+    <div className={styles.wrap}>
       <header className={styles.masthead + " " + styles.noPrint}>
         <div>
           <p className={styles.eyebrow}>PoC Prototype · 本番構成</p>
@@ -710,22 +759,436 @@ export default function Home() {
         </div>
       </header>
 
-      <div className={styles.bench}>
-        <section className={styles.panel + " " + styles.noPrint}>
-          <div className={styles.panelHead}>
-            <span className={styles.panelTitle}>1. 職員の入力</span>
-            <span className={styles.panelSub}>Input</span>
-          </div>
+      <nav className={styles.tabBar + " " + styles.noPrint} role="tablist" aria-label="画面切り替え">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            id={`tab-${t.key}`}
+            aria-controls={`tabpanel-${t.key}`}
+            aria-selected={activeTab === t.key}
+            className={styles.tabBtn + (activeTab === t.key ? " " + styles.tabBtnActive : "")}
+            onClick={() => setActiveTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-          <p className={styles.inputNotice} style={{ margin: 0 }}>
-            児童も<strong>仮名・ニックネーム</strong>で登録してください(本名や個人を特定できる情報は入力しないでください)。
+      {/* ===== 書く: 職員の入力 → AI分類 → 保存 ===== */}
+      <div
+        id="tabpanel-write"
+        role="tabpanel"
+        aria-labelledby="tab-write"
+        hidden={activeTab !== "write"}
+        className={styles.tabPage}
+      >
+        <div className={styles.bench}>
+          <section className={styles.panel + " " + styles.noPrint}>
+            <div className={styles.panelHead}>
+              <span className={styles.panelTitle}>職員の入力</span>
+              <span className={styles.panelSub}>Input</span>
+            </div>
+
+            <p className={styles.inputNotice} style={{ margin: 0 }}>
+              児童も<strong>仮名・ニックネーム</strong>で登録してください(本名や個人を特定できる情報は入力しないでください)。
+            </p>
+            <div className={styles.saveBar} style={{ marginTop: 8, paddingTop: 0, borderTop: "none" }}>
+              <select
+                className={styles.labelInput}
+                value={childId}
+                onChange={(e) => setChildId(e.target.value)}
+                aria-label="対象児童"
+              >
+                <option value="">対象児童を選択…</option>
+                {children.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nickname}({gradeLabel(c.enrollmentYear)})
+                  </option>
+                ))}
+              </select>
+              <input
+                className={styles.labelInput}
+                type="date"
+                value={recordDate}
+                onChange={(e) => setRecordDate(e.target.value)}
+                aria-label="記録対象日"
+              />
+            </div>
+            {children.length === 0 && (
+              <p
+                className={styles.archiveNote}
+                style={{ margin: "0 0 8px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}
+              >
+                <span>まだ児童が登録されていません。</span>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={() => {
+                    setActiveTab("admin");
+                    setShowAddChild(true);
+                  }}
+                >
+                  管理タブで児童を登録する
+                </button>
+              </p>
+            )}
+            {childrenError && <div className={styles.errorCallout}>⚠ {childrenError}</div>}
+
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={referencePrevious}
+                onChange={(e) => setReferencePrevious(e.target.checked)}
+              />
+              過去の記録を参照する(同じ児童の直近の健康面の記述をAIへの参考情報として渡します)
+            </label>
+
+            <p className={styles.inputNotice}>
+              児童は<strong>仮名・ニックネーム</strong>で入力してください(本名や個人を特定できる情報は入力しないでください)。
+            </p>
+            <textarea
+              className={styles.textarea}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="今日あったことを、話すように自由に書いてください。例:「れんくんは9時に到着して検温したら36.8度でした…」"
+              aria-label="自由記述の入力欄"
+            />
+            <div className={styles.inputTools}>
+              <button
+                type="button"
+                className={styles.btn + " " + styles.btnMic + " " + (recording ? styles.btnMicRecording : "")}
+                onClick={toggleMic}
+                disabled={!micSupported}
+                title={
+                  micSupported
+                    ? undefined
+                    : "このブラウザは音声入力(Web Speech API)に対応していません。Chrome / Edge でお試しいただくか、テキストで入力してください。"
+                }
+              >
+                <span className={styles.recDot} />
+                {!micSupported ? "🎙 音声入力(非対応)" : recording ? "● 停止" : "🎙 音声入力"}
+              </button>
+              <button type="button" className={styles.btn} onClick={handleInsertSample}>
+                サンプル文を挿入
+              </button>
+              <button type="button" className={styles.btn} onClick={handleClear}>
+                クリア
+              </button>
+              <button
+                type="button"
+                className={styles.btn + " " + styles.btnPrimary}
+                onClick={handleGenerate}
+                disabled={isGenerating || !text.trim() || !childId}
+                title={!childId ? "先に対象児童を選択してください" : undefined}
+              >
+                AI分類分け
+              </button>
+            </div>
+            <div className={styles.statRow}>
+              <span>
+                文字数: <b>{charCount}</b>
+              </span>
+            </div>
+          </section>
+
+          <section className={styles.panel}>
+            <div className={styles.panelHead + " " + styles.noPrint}>
+              <span className={styles.panelTitle}>AIアウトプット</span>
+              <span className={styles.panelSub}>Output · 6項目</span>
+            </div>
+
+            <div className={styles.printHeader}>
+              <h2>支援記録(AI下書き・職員確認済み)</h2>
+              <p>
+                利用者: {label || "(未記入)"} ／ 出力日時: {printedAt}
+              </p>
+            </div>
+
+            {error && <div className={styles.errorCallout}>⚠ {error}</div>}
+
+            {isGenerating && (
+              <div className={styles.thinking}>
+                <span className={styles.spinner} />
+                gpt-4o-mini が入力内容を6項目に振り分けています…
+              </div>
+            )}
+
+            {!isGenerating && !record && (
+              <div className={styles.emptyState}>
+                <span className={styles.glyph}>📋</span>
+                左の入力欄に記入し、「AI分類分け」を押すと、ここに出欠・健康面・活動内容などの下書きが生成されます。
+              </div>
+            )}
+
+            {!isGenerating && record && (
+              <div>
+                {CATEGORY_META.map((m) => (
+                  <FieldCard
+                    key={recordSeq + "-" + m.key}
+                    label={m.label}
+                    value={record[m.key]}
+                    editable
+                    fieldRef={(el) => {
+                      fieldRefs.current[m.key] = el;
+                    }}
+                    ariaLabel={m.label + "の下書き"}
+                    onCopy={(btn) => copyToClipboard(fieldRefs.current[m.key]?.textContent?.trim() ?? "", btn)}
+                  />
+                ))}
+
+                {incidentMismatches.length > 0 && (
+                  <div className={styles.mismatchCallout}>
+                    <span className={styles.noPrint}>
+                      ⚠ 機械チェック: 原文に事故・ヒヤリハット関連の語を含む文がありますが、特記事項欄に見当たりません。転記漏れがないか確認してください:
+                    </span>
+                    <span className={styles.printOnly}>特記事項への転記漏れの可能性(機械チェック):</span>
+                    <ul>
+                      {incidentMismatches.map((note, i) => (
+                        <li key={i}>{note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {record.uncertainNotes.length > 0 && (
+                  <div className={styles.uncertainCallout}>
+                    {/* 画面では職員への作業指示、紙の記録では「未分類のまま残した原文」という位置づけになる。 */}
+                    <span className={styles.noPrint}>
+                      ⚠ AIがどの項目にも自信を持って分類できなかった文が{record.uncertainNotes.length}件あります。手動で該当項目に振り分けてください:
+                    </span>
+                    <span className={styles.printOnly}>未分類のメモ(原文のまま):</span>
+                    <ul>
+                      {record.uncertainNotes.map((note, i) => (
+                        <li key={i}>{note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: 0 }}>
+                  対象: {childId ? childById.get(childId)?.nickname ?? "?" : "未選択"}
+                  {childId && childById.get(childId) ? `(${gradeLabel(childById.get(childId)!.enrollmentYear)})` : ""}
+                  ・記録日 {recordDate}
+                  {referencePrevious ? "・過去記録を参照" : "・過去記録は参照しない"}
+                </p>
+
+                <div className={styles.saveBar + " " + styles.noPrint}>
+                  <input
+                    className={styles.labelInput}
+                    type="text"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder="利用者名・日付などの見出し(任意)"
+                    aria-label="保存する記録の見出し"
+                  />
+                  <button
+                    type="button"
+                    className={styles.btn + " " + styles.btnPrimary}
+                    onClick={handleSave}
+                    disabled={saveBusy || !childId}
+                    title={!childId ? "先に対象児童を選択してください" : undefined}
+                  >
+                    {saveBusy ? "保存中…" : activeId ? "上書き保存" : "この記録を保存"}
+                  </button>
+                  <button type="button" className={styles.btn} onClick={printNow}>
+                    🖨 印刷 / PDF出力
+                  </button>
+                </div>
+                {saveFlash && <p className={styles.saveFlash + " " + styles.noPrint}>✓ {saveFlash}</p>}
+                {storageNote && <div className={styles.errorCallout + " " + styles.noPrint}>⚠ {storageNote}</div>}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+
+      {/* ===== 見る: 保存済み記録の一覧・検索・PDF出力 ===== */}
+      <div
+        id="tabpanel-view"
+        role="tabpanel"
+        aria-labelledby="tab-view"
+        hidden={activeTab !== "view"}
+        className={styles.tabPage}
+      >
+        <section className={styles.archive + " " + styles.noPrint}>
+          <div className={styles.panelHead}>
+            <span className={styles.panelTitle}>保存した記録</span>
+            <span className={styles.panelSub}>Archive · {facility.name} 内 {saved.length}件</span>
+          </div>
+          <p className={styles.archiveNote}>
+            保存先はSupabase(施設単位で共有)です。同じ施設のスタッフは全員この一覧を見られます。
           </p>
-          <div className={styles.saveBar} style={{ marginTop: 8, paddingTop: 0, borderTop: "none" }}>
+
+          <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
             <select
               className={styles.labelInput}
-              value={childId}
-              onChange={(e) => setChildId(e.target.value)}
-              aria-label="対象児童"
+              value={filterChildId}
+              onChange={(e) => setFilterChildId(e.target.value)}
+              aria-label="児童で絞り込み"
+            >
+              <option value="">児童で絞り込み: すべて</option>
+              {children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nickname}({gradeLabel(c.enrollmentYear)})
+                </option>
+              ))}
+            </select>
+            <input
+              className={styles.labelInput}
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              aria-label="この日以降(絞り込み)"
+              title="この日以降"
+            />
+            <span aria-hidden="true">〜</span>
+            <input
+              className={styles.labelInput}
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              aria-label="この日以前(絞り込み)"
+              title="この日以前"
+            />
+            {(filterChildId || filterDateFrom || filterDateTo) && (
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={() => {
+                  setFilterChildId("");
+                  setFilterDateFrom("");
+                  setFilterDateTo("");
+                }}
+              >
+                絞り込みを解除
+              </button>
+            )}
+          </div>
+
+          {saved.length === 0 ? (
+            <div className={styles.emptyState}>
+              まだ保存された記録はありません。「書く」タブでドラフトを確認・修正してから「この記録を保存」を押してください。
+            </div>
+          ) : filteredSaved.length === 0 ? (
+            <div className={styles.emptyState}>絞り込み条件に一致する記録がありません。</div>
+          ) : (
+            <ul className={styles.archiveList}>
+              {filteredSaved.map((entry) => {
+                const summary = entry.record.activity || entry.sourceText;
+                const child = entry.childId ? childById.get(entry.childId) : undefined;
+                return (
+                  <li
+                    key={entry.id}
+                    className={
+                      styles.archiveItem + " " + (entry.id === previewEntry?.id ? styles.archiveItemActive : "")
+                    }
+                  >
+                    <div className={styles.archiveMain}>
+                      <div className={styles.archiveHead}>
+                        <span className={styles.archiveLabel}>{entry.label || "(見出しなし)"}</span>
+                        <span className={styles.archiveTime}>
+                          {child ? `${child.nickname}(${gradeLabel(child.enrollmentYear)})` : "対象児童未設定"} ·{" "}
+                          {entry.recordDate} 記録 · 保存 {formatSavedAt(entry.savedAt)}
+                        </span>
+                      </div>
+                      <p className={styles.archiveSummary}>{summary.slice(0, 90) || "(本文なし)"}</p>
+                    </div>
+                    <div className={styles.archiveActions}>
+                      <button
+                        type="button"
+                        className={styles.btn + " " + styles.copyBtn}
+                        onClick={() => setPreviewEntry(entry)}
+                      >
+                        プレビュー
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.btn + " " + styles.copyBtn}
+                        onClick={() => handleLoad(entry)}
+                      >
+                        編集する
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.btn + " " + styles.copyBtn}
+                        onClick={() => handleDelete(entry)}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {previewEntry && (
+          <section className={styles.panel} style={{ marginTop: 20 }}>
+            <div className={styles.panelHead + " " + styles.noPrint}>
+              <span className={styles.panelTitle}>プレビュー</span>
+              <button type="button" className={styles.btn} onClick={() => setPreviewEntry(null)}>
+                閉じる
+              </button>
+            </div>
+
+            <div className={styles.printHeader}>
+              <h2>支援記録(保存済み・プレビュー)</h2>
+              <p>
+                利用者: {previewEntry.label || "(未記入)"} ／ 対象:{" "}
+                {previewEntry.childId ? childById.get(previewEntry.childId)?.nickname ?? "?" : "未設定"} ／ 記録日{" "}
+                {previewEntry.recordDate} ／ 保存 {formatSavedAt(previewEntry.savedAt)} ／ 出力日時: {printedAt}
+              </p>
+            </div>
+
+            {CATEGORY_META.map((m) => (
+              <FieldCard
+                key={m.key}
+                label={m.label}
+                value={previewEntry.record[m.key]}
+                editable={false}
+                onCopy={(btn) => copyToClipboard(previewEntry.record[m.key], btn)}
+              />
+            ))}
+
+            <div className={styles.saveBar + " " + styles.noPrint}>
+              <button type="button" className={styles.btn} onClick={() => handleLoad(previewEntry)}>
+                編集する(書くタブへ)
+              </button>
+              <button type="button" className={styles.btn} onClick={printNow}>
+                🖨 印刷 / PDF出力
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* ===== モニタリング: 個別支援計画モニタリング(下書き生成) ===== */}
+      <div
+        id="tabpanel-monitoring"
+        role="tabpanel"
+        aria-labelledby="tab-monitoring"
+        hidden={activeTab !== "monitoring"}
+        className={styles.tabPage}
+      >
+        <section className={styles.panel}>
+          <div className={styles.panelHead + " " + styles.noPrint}>
+            <span className={styles.panelTitle}>個別支援計画モニタリング(下書き)</span>
+            <span className={styles.panelSub}>Monitoring Draft</span>
+          </div>
+
+          <p className={styles.inputNotice + " " + styles.noPrint} style={{ margin: "0 0 12px" }}>
+            ここで作れるのは<strong>下書き</strong>です。相談支援事業所が区へ提出する「モニタリング結果報告書」とは別物です。内容を確認・修正のうえ、貴施設の様式へ転記してご利用ください。
+          </p>
+
+          <div className={styles.saveBar + " " + styles.noPrint} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+            <select
+              className={styles.labelInput}
+              value={monitoringChildId}
+              onChange={(e) => setMonitoringChildId(e.target.value)}
+              aria-label="モニタリング対象児童"
             >
               <option value="">対象児童を選択…</option>
               {children.map((c) => (
@@ -737,25 +1200,306 @@ export default function Home() {
             <input
               className={styles.labelInput}
               type="date"
-              value={recordDate}
-              onChange={(e) => setRecordDate(e.target.value)}
-              aria-label="記録対象日"
+              value={monitoringDateFrom}
+              onChange={(e) => setMonitoringDateFrom(e.target.value)}
+              aria-label="対象期間の開始日"
+              title="対象期間の開始日"
             />
+            <span aria-hidden="true">〜</span>
+            <input
+              className={styles.labelInput}
+              type="date"
+              value={monitoringDateTo}
+              onChange={(e) => setMonitoringDateTo(e.target.value)}
+              aria-label="対象期間の終了日"
+              title="対象期間の終了日"
+            />
+          </div>
+
+          <div className={styles.saveBar + " " + styles.noPrint} style={{ marginTop: 10, paddingTop: 0, borderTop: "none" }}>
+            <input
+              className={styles.labelInput}
+              type="text"
+              value={monitoringPlanRef}
+              onChange={(e) => setMonitoringPlanRef(e.target.value)}
+              placeholder="対象計画(例: 2026年4月作成の個別支援計画。任意)"
+              aria-label="対象計画"
+            />
+            <input
+              className={styles.labelInput}
+              type="date"
+              value={monitoringImplementedAt}
+              onChange={(e) => setMonitoringImplementedAt(e.target.value)}
+              aria-label="モニタリング実施日"
+              title="モニタリング実施日"
+            />
+          </div>
+
+          <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: "10px 0 6px" }}>
+            支援目標(個別支援計画の目標行)を入力してください。個別支援計画そのものを保存する機能はまだ無いため、生成のたびに入力が必要です。
+          </p>
+          {monitoringGoals.map((g, i) => (
+            <div
+              key={i}
+              className={styles.saveBar + " " + styles.noPrint}
+              style={{ marginTop: 6, paddingTop: 0, borderTop: "none" }}
+            >
+              <select
+                className={styles.labelInput}
+                style={{ flex: "0 1 150px" }}
+                value={g.category}
+                onChange={(e) => handleGoalChange(i, { category: e.target.value })}
+                aria-label={`支援目標${i + 1}の区分`}
+              >
+                {GOAL_CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <input
+                className={styles.labelInput}
+                type="text"
+                value={g.text}
+                onChange={(e) => handleGoalChange(i, { text: e.target.value })}
+                placeholder={`支援目標${i + 1}の内容`}
+                aria-label={`支援目標${i + 1}の内容`}
+              />
+              {monitoringGoals.length > 1 && (
+                <button type="button" className={styles.btn} onClick={() => handleRemoveGoal(i)}>
+                  削除
+                </button>
+              )}
+            </div>
+          ))}
+          <div className={styles.inputTools + " " + styles.noPrint} style={{ marginTop: 6, marginBottom: 0 }}>
+            <button type="button" className={styles.btn} onClick={handleAddGoal}>
+              + 目標を追加
+            </button>
+            <button type="button" className={styles.btn} onClick={handleClearMonitoring}>
+              クリア
+            </button>
+            <button
+              type="button"
+              className={styles.btn + " " + styles.btnPrimary}
+              onClick={handleGenerateMonitoring}
+              disabled={monitoringLoading || !monitoringChildId || monitoringGoals.every((g) => !g.text.trim())}
+              title={!monitoringChildId ? "先に対象児童を選択してください" : undefined}
+            >
+              {monitoringLoading ? "生成中…" : "モニタリング下書きを生成"}
+            </button>
+          </div>
+
+          {monitoringError && (
+            <div className={styles.errorCallout + " " + styles.noPrint} style={{ marginTop: 14 }}>
+              ⚠ {monitoringError}
+            </div>
+          )}
+          {monitoringLoading && (
+            <div className={styles.thinking}>
+              <span className={styles.spinner} />
+              gpt-4o-mini が記録を読み込み、モニタリング下書きを作成しています…
+            </div>
+          )}
+
+          {!monitoringLoading && monitoringDraft && (
+            <>
+              <div className={styles.printHeader}>
+                <h2>個別支援計画モニタリング(下書き)</h2>
+                <p>
+                  対象児童: {children.find((c) => c.id === monitoringChildId)?.nickname ?? "?"} ／ 対象計画:{" "}
+                  {monitoringPlanRef || "(未記入)"} ／ 実施日: {monitoringImplementedAt} ／ 出力日時: {printedAt}
+                </p>
+              </div>
+
+              <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: "12px 0 12px" }}>
+                対象期間 {monitoringDateFrom}〜{monitoringDateTo}・参照記録 {monitoringRecordCount}件(同じ児童・期間の記録本文は「見る」タブで見返せます)
+              </p>
+
+              <div key={monitoringSeq + "-interview"} className={styles.field}>
+                <div className={styles.fieldHead}>
+                  <span className={styles.fieldName}>面接の要点</span>
+                  <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                    <span className={styles.badge + " " + styles.badgeReview}>要職員入力</span>
+                    <button
+                      type="button"
+                      className={styles.btn + " " + styles.copyBtn}
+                      onClick={(e) => copyMonitoringField("interview", e.currentTarget)}
+                    >
+                      📋 コピー
+                    </button>
+                  </div>
+                </div>
+                <div
+                  ref={(el) => {
+                    monitoringFieldRefs.current["interview"] = el;
+                  }}
+                  className={styles.fieldBody + " " + styles.fieldBodyManual}
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="面接の要点(職員が入力)"
+                  data-placeholder="実施した保護者・本人面接の日時・内容を記入してください(AIは生成しません)"
+                />
+              </div>
+
+              {monitoringDraft.goalEvaluations.map((g, i) => (
+                <div key={monitoringSeq + "-goal-" + i} className={styles.field}>
+                  <div className={styles.fieldHead}>
+                    <span className={styles.fieldName}>
+                      支援目標{i + 1}: {g.goalText}
+                    </span>
+                    <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                      <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
+                      <button
+                        type="button"
+                        className={styles.btn + " " + styles.copyBtn}
+                        onClick={(e) => copyMonitoringField("goal-" + i, e.currentTarget)}
+                      >
+                        📋 コピー
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    ref={(el) => {
+                      monitoringFieldRefs.current["goal-" + i] = el;
+                    }}
+                    className={styles.fieldBody}
+                    contentEditable
+                    suppressContentEditableWarning
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-label={`支援目標${i + 1}の実施状況・達成評価`}
+                  >
+                    {g.evaluation}
+                  </div>
+                </div>
+              ))}
+
+              <div key={monitoringSeq + "-newIssues"} className={styles.field}>
+                <div className={styles.fieldHead}>
+                  <span className={styles.fieldName}>新たな課題</span>
+                  <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                    <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
+                    <button
+                      type="button"
+                      className={styles.btn + " " + styles.copyBtn}
+                      onClick={(e) => copyMonitoringField("newIssues", e.currentTarget)}
+                    >
+                      📋 コピー
+                    </button>
+                  </div>
+                </div>
+                <div
+                  ref={(el) => {
+                    monitoringFieldRefs.current["newIssues"] = el;
+                  }}
+                  className={styles.fieldBody}
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="新たな課題"
+                >
+                  {monitoringDraft.newIssues}
+                </div>
+              </div>
+
+              <div key={monitoringSeq + "-changeDecision"} className={styles.field}>
+                <div className={styles.fieldHead}>
+                  <span className={styles.fieldName}>変更要否と判断理由</span>
+                  <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                    <span className={styles.badge + " " + styles.badgeReview}>要職員入力</span>
+                    <button
+                      type="button"
+                      className={styles.btn + " " + styles.copyBtn}
+                      onClick={(e) => copyMonitoringField("changeDecision", e.currentTarget)}
+                    >
+                      📋 コピー
+                    </button>
+                  </div>
+                </div>
+                <div
+                  ref={(el) => {
+                    monitoringFieldRefs.current["changeDecision"] = el;
+                  }}
+                  className={styles.fieldBody + " " + styles.fieldBodyManual}
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="変更要否と判断理由(職員が入力)"
+                  data-placeholder="計画変更の要否・検討日・判断理由を記入してください(AIは生成しません)"
+                />
+              </div>
+
+              <div key={monitoringSeq + "-nextProposal"} className={styles.field}>
+                <div className={styles.fieldHead}>
+                  <span className={styles.fieldName}>次期提案</span>
+                  <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                    <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
+                    <button
+                      type="button"
+                      className={styles.btn + " " + styles.copyBtn}
+                      onClick={(e) => copyMonitoringField("nextProposal", e.currentTarget)}
+                    >
+                      📋 コピー
+                    </button>
+                  </div>
+                </div>
+                <div
+                  ref={(el) => {
+                    monitoringFieldRefs.current["nextProposal"] = el;
+                  }}
+                  className={styles.fieldBody}
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="次期提案"
+                >
+                  {monitoringDraft.nextProposal}
+                </div>
+              </div>
+
+              <div className={styles.saveBar + " " + styles.noPrint}>
+                <button type="button" className={styles.btn} onClick={printNow}>
+                  🖨 印刷 / PDF出力
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+
+      {/* ===== 管理: 児童マスタ登録・施設スタッフ招待 ===== */}
+      <div
+        id="tabpanel-admin"
+        role="tabpanel"
+        aria-labelledby="tab-admin"
+        hidden={activeTab !== "admin"}
+        className={styles.tabPage + " " + styles.noPrint}
+      >
+        <section className={styles.panel}>
+          <div className={styles.panelHead}>
+            <span className={styles.panelTitle}>児童の登録</span>
+            <span className={styles.panelSub}>Children · {facility.name} 内 {children.length}名</span>
+          </div>
+          <p className={styles.inputNotice} style={{ margin: "0 0 12px" }}>
+            児童は<strong>仮名・ニックネーム</strong>で登録してください(本名や個人を特定できる情報は入力しないでください)。
+          </p>
+          {childrenError && <div className={styles.errorCallout}>⚠ {childrenError}</div>}
+          <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
             <button type="button" className={styles.btn} onClick={() => setShowAddChild((v) => !v)}>
               {showAddChild ? "キャンセル" : "+ 児童を追加"}
             </button>
           </div>
-          {children.length === 0 && !showAddChild && (
-            <p className={styles.archiveNote} style={{ margin: 0 }}>
-              まだ児童が登録されていません。「+ 児童を追加」から登録してください。
-            </p>
-          )}
-          {childrenError && <div className={styles.errorCallout}>⚠ {childrenError}</div>}
           {showAddChild && (
             <form
               onSubmit={handleCreateChild}
               className={styles.saveBar}
-              style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+              style={{ marginTop: 10, paddingTop: 0, borderTop: "none" }}
             >
               <input
                 className={styles.labelInput}
@@ -786,621 +1530,36 @@ export default function Home() {
             </form>
           )}
           {addChildError && <div className={styles.errorCallout}>⚠ {addChildError}</div>}
-
-          <label className={styles.checkboxLabel}>
-            <input
-              type="checkbox"
-              checked={referencePrevious}
-              onChange={(e) => setReferencePrevious(e.target.checked)}
-            />
-            過去の記録を参照する(同じ児童の直近の健康面の記述をAIへの参考情報として渡します)
-          </label>
-
-          <p className={styles.inputNotice}>
-            児童は<strong>仮名・ニックネーム</strong>で入力してください(本名や個人を特定できる情報は入力しないでください)。
-          </p>
-          <textarea
-            className={styles.textarea}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="今日あったことを、話すように自由に書いてください。例:「れんくんは9時に到着して検温したら36.8度でした…」"
-            aria-label="自由記述の入力欄"
-          />
-          <div className={styles.inputTools}>
-            <button
-              type="button"
-              className={styles.btn + " " + styles.btnMic + " " + (recording ? styles.btnMicRecording : "")}
-              onClick={toggleMic}
-              disabled={!micSupported}
-              title={
-                micSupported
-                  ? undefined
-                  : "このブラウザは音声入力(Web Speech API)に対応していません。Chrome / Edge でお試しいただくか、テキストで入力してください。"
-              }
-            >
-              <span className={styles.recDot} />
-              {!micSupported ? "🎙 音声入力(非対応)" : recording ? "● 停止" : "🎙 音声入力"}
-            </button>
-            <button type="button" className={styles.btn} onClick={handleInsertSample}>
-              サンプル文を挿入
-            </button>
-            <button type="button" className={styles.btn} onClick={handleClear}>
-              クリア
-            </button>
-            <button
-              type="button"
-              className={styles.btn + " " + styles.btnPrimary}
-              onClick={handleGenerate}
-              disabled={isGenerating || !text.trim() || !childId}
-              title={!childId ? "先に対象児童を選択してください" : undefined}
-            >
-              AI分類分け
-            </button>
-          </div>
-          <div className={styles.statRow}>
-            <span>
-              文字数: <b>{charCount}</b>
-            </span>
-          </div>
         </section>
 
-        <section className={styles.panel + " " + styles.recordPrintArea}>
-          <div className={styles.panelHead + " " + styles.noPrint}>
-            <span className={styles.panelTitle}>2. AIアウトプット</span>
-            <span className={styles.panelSub}>Output · 6項目</span>
+        <section className={styles.panel} style={{ marginTop: 20 }}>
+          <div className={styles.panelHead}>
+            <span className={styles.panelTitle}>スタッフの招待</span>
+            <span className={styles.panelSub}>Invite</span>
           </div>
-
-          <div className={styles.printHeader}>
-            <h2>支援記録(AI下書き・職員確認済み)</h2>
-            <p>
-              利用者: {label || "(未記入)"} ／ 出力日時: {printedAt}
-            </p>
-          </div>
-
-          {error && <div className={styles.errorCallout}>⚠ {error}</div>}
-
-          {isGenerating && (
-            <div className={styles.thinking}>
-              <span className={styles.spinner} />
-              gpt-4o-mini が入力内容を6項目に振り分けています…
-            </div>
-          )}
-
-          {!isGenerating && !record && (
-            <div className={styles.emptyState}>
-              <span className={styles.glyph}>📋</span>
-              左の入力欄に記入し、「AI分類分け」を押すと、ここに出欠・健康面・活動内容などの下書きが生成されます。
-            </div>
-          )}
-
-          {!isGenerating && record && (
-            <div>
-              {CATEGORY_META.map((m) => {
-                const value = record[m.key];
-                const filled = value.trim().length > 0;
-                return (
-                  <div key={recordSeq + "-" + m.key} className={styles.field}>
-                    <div className={styles.fieldHead}>
-                      <span className={styles.fieldName}>{m.label}</span>
-                      <div className={styles.fieldHeadRight + " " + styles.noPrint}>
-                        <span className={styles.badge + " " + (filled ? styles.badgeAuto : styles.badgeNone)}>
-                          {filled ? "自動分類" : "該当なし"}
-                        </span>
-                        <button
-                          type="button"
-                          className={styles.btn + " " + styles.copyBtn}
-                          onClick={(e) => copyField(m.key, e.currentTarget)}
-                        >
-                          📋 コピー
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      ref={(el) => {
-                        fieldRefs.current[m.key] = el;
-                      }}
-                      className={styles.fieldBody}
-                      contentEditable
-                      suppressContentEditableWarning
-                      role="textbox"
-                      aria-multiline="true"
-                      aria-label={m.label + "の下書き"}
-                    >
-                      {value}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {incidentMismatches.length > 0 && (
-                <div className={styles.mismatchCallout}>
-                  <span className={styles.noPrint}>
-                    ⚠ 機械チェック: 原文に事故・ヒヤリハット関連の語を含む文がありますが、特記事項欄に見当たりません。転記漏れがないか確認してください:
-                  </span>
-                  <span className={styles.printOnly}>特記事項への転記漏れの可能性(機械チェック):</span>
-                  <ul>
-                    {incidentMismatches.map((note, i) => (
-                      <li key={i}>{note}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {record.uncertainNotes.length > 0 && (
-                <div className={styles.uncertainCallout}>
-                  {/* 画面では職員への作業指示、紙の記録では「未分類のまま残した原文」という位置づけになる。 */}
-                  <span className={styles.noPrint}>
-                    ⚠ AIがどの項目にも自信を持って分類できなかった文が{record.uncertainNotes.length}件あります。手動で該当項目に振り分けてください:
-                  </span>
-                  <span className={styles.printOnly}>未分類のメモ(原文のまま):</span>
-                  <ul>
-                    {record.uncertainNotes.map((note, i) => (
-                      <li key={i}>{note}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: 0 }}>
-                対象: {childId ? childById.get(childId)?.nickname ?? "?" : "未選択"}
-                {childId && childById.get(childId) ? `(${gradeLabel(childById.get(childId)!.enrollmentYear)})` : ""}
-                ・記録日 {recordDate}
-                {referencePrevious ? "・過去記録を参照" : "・過去記録は参照しない"}
-              </p>
-
-              <div className={styles.saveBar + " " + styles.noPrint}>
-                <input
-                  className={styles.labelInput}
-                  type="text"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="利用者名・日付などの見出し(任意)"
-                  aria-label="保存する記録の見出し"
-                />
-                <button
-                  type="button"
-                  className={styles.btn + " " + styles.btnPrimary}
-                  onClick={handleSave}
-                  disabled={saveBusy || !childId}
-                  title={!childId ? "先に対象児童を選択してください" : undefined}
-                >
-                  {saveBusy ? "保存中…" : activeId ? "上書き保存" : "この記録を保存"}
-                </button>
-                <button type="button" className={styles.btn} onClick={handlePrint}>
-                  🖨 印刷 / PDF出力
-                </button>
-              </div>
-              {saveFlash && <p className={styles.saveFlash + " " + styles.noPrint}>✓ {saveFlash}</p>}
-              {storageNote && <div className={styles.errorCallout + " " + styles.noPrint}>⚠ {storageNote}</div>}
-            </div>
-          )}
+          <form onSubmit={handleInvite} className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+            <input
+              className={styles.labelInput}
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="招待するスタッフのメールアドレス(サインアップ済みの人のみ)"
+              aria-label="招待するスタッフのメールアドレス"
+            />
+            <button type="submit" className={styles.btn} disabled={inviteBusy}>
+              {inviteBusy ? "招待中…" : "施設に招待"}
+            </button>
+          </form>
+          {inviteNotice && <p className={styles.saveFlash} style={{ marginTop: 8 }}>{inviteNotice}</p>}
         </section>
       </div>
 
-      <section className={styles.archive + " " + styles.noPrint}>
-        <div className={styles.panelHead}>
-          <span className={styles.panelTitle}>3. 保存した記録</span>
-          <span className={styles.panelSub}>Archive · {facility.name} 内 {saved.length}件</span>
-        </div>
-        <p className={styles.archiveNote}>
-          保存先はSupabase(施設単位で共有)です。同じ施設のスタッフは全員この一覧を見られます。
-        </p>
-
-        <div className={styles.saveBar} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-          <select
-            className={styles.labelInput}
-            value={filterChildId}
-            onChange={(e) => setFilterChildId(e.target.value)}
-            aria-label="児童で絞り込み"
-          >
-            <option value="">児童で絞り込み: すべて</option>
-            {children.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nickname}({gradeLabel(c.enrollmentYear)})
-              </option>
-            ))}
-          </select>
-          <input
-            className={styles.labelInput}
-            type="date"
-            value={filterDateFrom}
-            onChange={(e) => setFilterDateFrom(e.target.value)}
-            aria-label="この日以降(絞り込み)"
-            title="この日以降"
-          />
-          <span aria-hidden="true">〜</span>
-          <input
-            className={styles.labelInput}
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => setFilterDateTo(e.target.value)}
-            aria-label="この日以前(絞り込み)"
-            title="この日以前"
-          />
-          {(filterChildId || filterDateFrom || filterDateTo) && (
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={() => {
-                setFilterChildId("");
-                setFilterDateFrom("");
-                setFilterDateTo("");
-              }}
-            >
-              絞り込みを解除
-            </button>
-          )}
-        </div>
-
-        {saved.length === 0 ? (
-          <div className={styles.emptyState}>
-            まだ保存された記録はありません。上のドラフトを確認・修正してから「この記録を保存」を押してください。
-          </div>
-        ) : filteredSaved.length === 0 ? (
-          <div className={styles.emptyState}>絞り込み条件に一致する記録がありません。</div>
-        ) : (
-          <ul className={styles.archiveList}>
-            {filteredSaved.map((entry) => {
-              const summary = entry.record.activity || entry.sourceText;
-              const child = entry.childId ? childById.get(entry.childId) : undefined;
-              return (
-                <li
-                  key={entry.id}
-                  className={styles.archiveItem + " " + (entry.id === activeId ? styles.archiveItemActive : "")}
-                >
-                  <div className={styles.archiveMain}>
-                    <div className={styles.archiveHead}>
-                      <span className={styles.archiveLabel}>{entry.label || "(見出しなし)"}</span>
-                      <span className={styles.archiveTime}>
-                        {child ? `${child.nickname}(${gradeLabel(child.enrollmentYear)})` : "対象児童未設定"} ·{" "}
-                        {entry.recordDate} 記録 · 保存 {formatSavedAt(entry.savedAt)}
-                      </span>
-                    </div>
-                    <p className={styles.archiveSummary}>{summary.slice(0, 90) || "(本文なし)"}</p>
-                  </div>
-                  <div className={styles.archiveActions}>
-                    <button
-                      type="button"
-                      className={styles.btn + " " + styles.copyBtn}
-                      onClick={() => handleLoad(entry)}
-                    >
-                      開く
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.btn + " " + styles.copyBtn}
-                      onClick={() => handleDelete(entry)}
-                    >
-                      削除
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <form onSubmit={handleInvite} className={styles.saveBar} style={{ marginTop: 20 }}>
-          <input
-            className={styles.labelInput}
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="招待するスタッフのメールアドレス(サインアップ済みの人のみ)"
-            aria-label="招待するスタッフのメールアドレス"
-          />
-          <button type="submit" className={styles.btn} disabled={inviteBusy}>
-            {inviteBusy ? "招待中…" : "施設に招待"}
-          </button>
-        </form>
-        {inviteNotice && <p className={styles.saveFlash} style={{ marginTop: 8 }}>{inviteNotice}</p>}
-      </section>
-
-      <section className={styles.panel + " " + styles.monitoringPrintArea} style={{ marginTop: 32 }}>
-        <div className={styles.panelHead + " " + styles.noPrint}>
-          <span className={styles.panelTitle}>4. 個別支援計画モニタリング(下書き)</span>
-          <span className={styles.panelSub}>Monitoring Draft</span>
-        </div>
-
-        <p className={styles.inputNotice + " " + styles.noPrint} style={{ margin: "0 0 12px" }}>
-          ここで作れるのは<strong>下書き</strong>です。相談支援事業所が区へ提出する「モニタリング結果報告書」とは別物です。内容を確認・修正のうえ、貴施設の様式へ転記してご利用ください。
-        </p>
-
-        <div className={styles.saveBar + " " + styles.noPrint} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-          <select
-            className={styles.labelInput}
-            value={monitoringChildId}
-            onChange={(e) => setMonitoringChildId(e.target.value)}
-            aria-label="モニタリング対象児童"
-          >
-            <option value="">対象児童を選択…</option>
-            {children.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nickname}({gradeLabel(c.enrollmentYear)})
-              </option>
-            ))}
-          </select>
-          <input
-            className={styles.labelInput}
-            type="date"
-            value={monitoringDateFrom}
-            onChange={(e) => setMonitoringDateFrom(e.target.value)}
-            aria-label="対象期間の開始日"
-            title="対象期間の開始日"
-          />
-          <span aria-hidden="true">〜</span>
-          <input
-            className={styles.labelInput}
-            type="date"
-            value={monitoringDateTo}
-            onChange={(e) => setMonitoringDateTo(e.target.value)}
-            aria-label="対象期間の終了日"
-            title="対象期間の終了日"
-          />
-        </div>
-
-        <div className={styles.saveBar + " " + styles.noPrint} style={{ marginTop: 10, paddingTop: 0, borderTop: "none" }}>
-          <input
-            className={styles.labelInput}
-            type="text"
-            value={monitoringPlanRef}
-            onChange={(e) => setMonitoringPlanRef(e.target.value)}
-            placeholder="対象計画(例: 2026年4月作成の個別支援計画。任意)"
-            aria-label="対象計画"
-          />
-          <input
-            className={styles.labelInput}
-            type="date"
-            value={monitoringImplementedAt}
-            onChange={(e) => setMonitoringImplementedAt(e.target.value)}
-            aria-label="モニタリング実施日"
-            title="モニタリング実施日"
-          />
-        </div>
-
-        <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: "10px 0 6px" }}>
-          支援目標(個別支援計画の目標行)を入力してください。個別支援計画そのものを保存する機能はまだ無いため、生成のたびに入力が必要です。
-        </p>
-        {monitoringGoals.map((g, i) => (
-          <div
-            key={i}
-            className={styles.saveBar + " " + styles.noPrint}
-            style={{ marginTop: 6, paddingTop: 0, borderTop: "none" }}
-          >
-            <select
-              className={styles.labelInput}
-              style={{ flex: "0 1 150px" }}
-              value={g.category}
-              onChange={(e) => handleGoalChange(i, { category: e.target.value })}
-              aria-label={`支援目標${i + 1}の区分`}
-            >
-              {GOAL_CATEGORY_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <input
-              className={styles.labelInput}
-              type="text"
-              value={g.text}
-              onChange={(e) => handleGoalChange(i, { text: e.target.value })}
-              placeholder={`支援目標${i + 1}の内容`}
-              aria-label={`支援目標${i + 1}の内容`}
-            />
-            {monitoringGoals.length > 1 && (
-              <button type="button" className={styles.btn} onClick={() => handleRemoveGoal(i)}>
-                削除
-              </button>
-            )}
-          </div>
-        ))}
-        <div className={styles.inputTools + " " + styles.noPrint} style={{ marginTop: 6, marginBottom: 0 }}>
-          <button type="button" className={styles.btn} onClick={handleAddGoal}>
-            + 目標を追加
-          </button>
-          <button type="button" className={styles.btn} onClick={handleClearMonitoring}>
-            クリア
-          </button>
-          <button
-            type="button"
-            className={styles.btn + " " + styles.btnPrimary}
-            onClick={handleGenerateMonitoring}
-            disabled={monitoringLoading || !monitoringChildId || monitoringGoals.every((g) => !g.text.trim())}
-            title={!monitoringChildId ? "先に対象児童を選択してください" : undefined}
-          >
-            {monitoringLoading ? "生成中…" : "モニタリング下書きを生成"}
-          </button>
-        </div>
-
-        {monitoringError && (
-          <div className={styles.errorCallout + " " + styles.noPrint} style={{ marginTop: 14 }}>
-            ⚠ {monitoringError}
-          </div>
-        )}
-        {monitoringLoading && (
-          <div className={styles.thinking}>
-            <span className={styles.spinner} />
-            gpt-4o-mini が記録を読み込み、モニタリング下書きを作成しています…
-          </div>
-        )}
-
-        {!monitoringLoading && monitoringDraft && (
-          <>
-            <div className={styles.printHeader}>
-              <h2>個別支援計画モニタリング(下書き)</h2>
-              <p>
-                対象児童: {children.find((c) => c.id === monitoringChildId)?.nickname ?? "?"} ／ 対象計画:{" "}
-                {monitoringPlanRef || "(未記入)"} ／ 実施日: {monitoringImplementedAt} ／ 出力日時: {printedAt}
-              </p>
-            </div>
-
-            <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: "12px 0 12px" }}>
-              対象期間 {monitoringDateFrom}〜{monitoringDateTo}・参照記録 {monitoringRecordCount}件(同じ児童・期間の記録本文は「3. 保存した記録」で見返せます)
-            </p>
-
-            <div key={monitoringSeq + "-interview"} className={styles.field}>
-              <div className={styles.fieldHead}>
-                <span className={styles.fieldName}>面接の要点</span>
-                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
-                  <span className={styles.badge + " " + styles.badgeReview}>要職員入力</span>
-                  <button
-                    type="button"
-                    className={styles.btn + " " + styles.copyBtn}
-                    onClick={(e) => copyMonitoringField("interview", e.currentTarget)}
-                  >
-                    📋 コピー
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={(el) => {
-                  monitoringFieldRefs.current["interview"] = el;
-                }}
-                className={styles.fieldBody + " " + styles.fieldBodyManual}
-                contentEditable
-                suppressContentEditableWarning
-                role="textbox"
-                aria-multiline="true"
-                aria-label="面接の要点(職員が入力)"
-                data-placeholder="実施した保護者・本人面接の日時・内容を記入してください(AIは生成しません)"
-              />
-            </div>
-
-            {monitoringDraft.goalEvaluations.map((g, i) => (
-              <div key={monitoringSeq + "-goal-" + i} className={styles.field}>
-                <div className={styles.fieldHead}>
-                  <span className={styles.fieldName}>
-                    支援目標{i + 1}: {g.goalText}
-                  </span>
-                  <div className={styles.fieldHeadRight + " " + styles.noPrint}>
-                    <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
-                    <button
-                      type="button"
-                      className={styles.btn + " " + styles.copyBtn}
-                      onClick={(e) => copyMonitoringField("goal-" + i, e.currentTarget)}
-                    >
-                      📋 コピー
-                    </button>
-                  </div>
-                </div>
-                <div
-                  ref={(el) => {
-                    monitoringFieldRefs.current["goal-" + i] = el;
-                  }}
-                  className={styles.fieldBody}
-                  contentEditable
-                  suppressContentEditableWarning
-                  role="textbox"
-                  aria-multiline="true"
-                  aria-label={`支援目標${i + 1}の実施状況・達成評価`}
-                >
-                  {g.evaluation}
-                </div>
-              </div>
-            ))}
-
-            <div key={monitoringSeq + "-newIssues"} className={styles.field}>
-              <div className={styles.fieldHead}>
-                <span className={styles.fieldName}>新たな課題</span>
-                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
-                  <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
-                  <button
-                    type="button"
-                    className={styles.btn + " " + styles.copyBtn}
-                    onClick={(e) => copyMonitoringField("newIssues", e.currentTarget)}
-                  >
-                    📋 コピー
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={(el) => {
-                  monitoringFieldRefs.current["newIssues"] = el;
-                }}
-                className={styles.fieldBody}
-                contentEditable
-                suppressContentEditableWarning
-                role="textbox"
-                aria-multiline="true"
-                aria-label="新たな課題"
-              >
-                {monitoringDraft.newIssues}
-              </div>
-            </div>
-
-            <div key={monitoringSeq + "-changeDecision"} className={styles.field}>
-              <div className={styles.fieldHead}>
-                <span className={styles.fieldName}>変更要否と判断理由</span>
-                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
-                  <span className={styles.badge + " " + styles.badgeReview}>要職員入力</span>
-                  <button
-                    type="button"
-                    className={styles.btn + " " + styles.copyBtn}
-                    onClick={(e) => copyMonitoringField("changeDecision", e.currentTarget)}
-                  >
-                    📋 コピー
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={(el) => {
-                  monitoringFieldRefs.current["changeDecision"] = el;
-                }}
-                className={styles.fieldBody + " " + styles.fieldBodyManual}
-                contentEditable
-                suppressContentEditableWarning
-                role="textbox"
-                aria-multiline="true"
-                aria-label="変更要否と判断理由(職員が入力)"
-                data-placeholder="計画変更の要否・検討日・判断理由を記入してください(AIは生成しません)"
-              />
-            </div>
-
-            <div key={monitoringSeq + "-nextProposal"} className={styles.field}>
-              <div className={styles.fieldHead}>
-                <span className={styles.fieldName}>次期提案</span>
-                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
-                  <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
-                  <button
-                    type="button"
-                    className={styles.btn + " " + styles.copyBtn}
-                    onClick={(e) => copyMonitoringField("nextProposal", e.currentTarget)}
-                  >
-                    📋 コピー
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={(el) => {
-                  monitoringFieldRefs.current["nextProposal"] = el;
-                }}
-                className={styles.fieldBody}
-                contentEditable
-                suppressContentEditableWarning
-                role="textbox"
-                aria-multiline="true"
-                aria-label="次期提案"
-              >
-                {monitoringDraft.nextProposal}
-              </div>
-            </div>
-
-            <div className={styles.saveBar + " " + styles.noPrint}>
-              <button type="button" className={styles.btn} onClick={handlePrintMonitoring}>
-                🖨 印刷 / PDF出力
-              </button>
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* 毎日使う画面なので、説明は作業導線(入力→出力→保存)の下に置く。 */}
+      {/* 毎日使うツールなので、説明は作業導線(タブ)の下に置く。全タブ共通の説明のため、タブの外側に常時表示する。 */}
       <div className={styles.disclosure + " " + styles.noPrint} style={{ marginTop: 32, marginBottom: 0 }}>
         <span className={styles.disclosureDot} />
         <div>
           <p>
-            <strong>この画面でできること</strong>:
+            <strong>このツールでできること</strong>:
             実際に OpenAI の生成AIモデル(gpt-4o-mini)を呼び出し、自由に書いた・話した文章を6項目に振り分けます(キーワード照合の簡易版ではありません)。作った記録は同じ施設のスタッフ全員で共有されます(Supabase・RLSで施設外からは見えません)。
           </p>
           <p>
