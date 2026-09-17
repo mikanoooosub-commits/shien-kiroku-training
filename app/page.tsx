@@ -1038,6 +1038,21 @@ export default function Home() {
                 </option>
               ))}
             </select>
+            {(filterChildId || filterDateFrom || filterDateTo) && (
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={() => {
+                  setFilterChildId("");
+                  setFilterDateFrom("");
+                  setFilterDateTo("");
+                }}
+              >
+                絞り込みを解除
+              </button>
+            )}
+          </div>
+          <div className={styles.saveBar} style={{ marginTop: 8, paddingTop: 0, borderTop: "none" }}>
             <input
               className={styles.labelInput}
               type="date"
@@ -1055,19 +1070,6 @@ export default function Home() {
               aria-label="この日以前(絞り込み)"
               title="この日以前"
             />
-            {(filterChildId || filterDateFrom || filterDateTo) && (
-              <button
-                type="button"
-                className={styles.btn}
-                onClick={() => {
-                  setFilterChildId("");
-                  setFilterDateFrom("");
-                  setFilterDateTo("");
-                }}
-              >
-                絞り込みを解除
-              </button>
-            )}
           </div>
 
           {saved.length === 0 ? (
