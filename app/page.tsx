@@ -1137,7 +1137,7 @@ export default function Home() {
           {!previewEntry && (
             <div className={styles.emptyState}>
               <span className={styles.glyph}>📋</span>
-              左の一覧から「プレビュー」を選ぶと、ここに記録の内容が表示されます。
+              左の一覧から記録をクリックすると、ここに内容が表示されます。
             </div>
           )}
 
