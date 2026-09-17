@@ -7,7 +7,9 @@ import styles from "./page.module.css";
 import {
   ApiResponseSchema,
   CATEGORY_META,
+  MonitoringApiResponseSchema,
   type CategoryKey,
+  type MonitoringDraft,
   type SavedRecord,
   type StructuredRecord,
 } from "./record";
@@ -40,6 +42,17 @@ function todayStr(): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/** 今日から6か月前の日付(yyyy-mm-dd)。モニタリング対象期間の初期値に使う。 */
+function sixMonthsAgoStr(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 6);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 支援目標の区分の選択肢(個別支援計画の国参考様式の項目に合わせる)。 */
+const GOAL_CATEGORY_OPTIONS = ["本人支援", "家族支援", "移行支援", "地域支援・地域連携", "その他"];
 
 /**
  * 「特記事項が空欄」は、実際には「該当なし」と「AIが見落とした」を画面上区別できない。
@@ -176,11 +189,32 @@ export default function Home() {
 
   // 印刷: 画面のボタン経由でもブラウザのCtrl+P経由でも、出力日時が入るようにする。
   const [printedAt, setPrintedAt] = useState("");
+  // セクション2(AIアウトプット)とセクション4(モニタリング下書き)の両方が印刷可能な内容を持つため、
+  // どちらを印刷対象にするかを切り替える(初期値は既存動作を保つため"record")。
+  const [printTarget, setPrintTarget] = useState<"record" | "monitoring">("record");
+
+  // 個別支援計画モニタリング下書き(セクション4)。既存の支援記録とは別機能で、生成結果はDBに保存せず、
+  // その場で作って確認・修正のうえ印刷/コピーして使う想定(次回モニタリング時は改めて生成する)。
+  const [monitoringChildId, setMonitoringChildId] = useState("");
+  const [monitoringDateFrom, setMonitoringDateFrom] = useState(() => sixMonthsAgoStr());
+  const [monitoringDateTo, setMonitoringDateTo] = useState(() => todayStr());
+  const [monitoringPlanRef, setMonitoringPlanRef] = useState("");
+  const [monitoringImplementedAt, setMonitoringImplementedAt] = useState(() => todayStr());
+  // 個別支援計画そのものを保存する機能はまだ無いため、支援目標はここで毎回入力してもらう。
+  const [monitoringGoals, setMonitoringGoals] = useState<{ category: string; text: string }[]>([
+    { category: GOAL_CATEGORY_OPTIONS[0], text: "" },
+  ]);
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [monitoringDraft, setMonitoringDraft] = useState<MonitoringDraft | null>(null);
+  const [monitoringRecordCount, setMonitoringRecordCount] = useState(0);
+  const [monitoringSeq, setMonitoringSeq] = useState(0);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const recordingRef = useRef(false);
   const baseTextRef = useRef("");
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const monitoringFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     const w = window as unknown as {
@@ -475,12 +509,95 @@ export default function Home() {
   }
 
   function handlePrint() {
-    // 出力日時は beforeprint ハンドラ側で入る。
+    // 出力日時は beforeprint ハンドラ側で入る。印刷対象をセクション2(記録)に切り替える。
+    setPrintTarget("record");
     window.print();
   }
 
   function copyField(key: CategoryKey, btn: HTMLButtonElement) {
     const value = fieldRefs.current[key]?.textContent?.trim() ?? "";
+    const original = btn.textContent;
+    const reset = (text: string, copied: boolean) => {
+      btn.textContent = text;
+      btn.classList.toggle(styles.copyBtnCopied, copied);
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove(styles.copyBtnCopied);
+      }, 1400);
+    };
+    if (!value) {
+      reset("(空です)", false);
+      return;
+    }
+    navigator.clipboard
+      .writeText(value)
+      .then(() => reset("✓ コピーしました", true))
+      .catch(() => reset("✕ 失敗", false));
+  }
+
+  function handleAddGoal() {
+    setMonitoringGoals((prev) => [...prev, { category: GOAL_CATEGORY_OPTIONS[0], text: "" }]);
+  }
+
+  function handleRemoveGoal(index: number) {
+    setMonitoringGoals((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleGoalChange(index: number, patch: Partial<{ category: string; text: string }>) {
+    setMonitoringGoals((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)));
+  }
+
+  async function handleGenerateMonitoring() {
+    const goals = monitoringGoals
+      .map((g) => ({ category: g.category.trim(), text: g.text.trim() }))
+      .filter((g) => g.text.length > 0);
+    if (!monitoringChildId || goals.length === 0) return;
+    setMonitoringLoading(true);
+    setMonitoringError(null);
+    try {
+      const res = await fetch("/api/monitoring", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          childId: monitoringChildId,
+          dateFrom: monitoringDateFrom,
+          dateTo: monitoringDateTo,
+          goals,
+        }),
+      });
+      // 自前のAPIでもネットワークを跨ぐ以上、型注釈ではなく実際に形を検証してから使う。
+      const parsed = MonitoringApiResponseSchema.safeParse(await res.json());
+      if (!parsed.success) {
+        throw new Error("サーバーの応答形式が想定と異なります。");
+      }
+      if (!res.ok || !parsed.data.draft) {
+        throw new Error(parsed.data.error ?? "モニタリング下書きの生成に失敗しました。");
+      }
+      setMonitoringDraft(parsed.data.draft);
+      setMonitoringRecordCount(
+        saved.filter(
+          (r) =>
+            r.childId === monitoringChildId &&
+            r.recordDate >= monitoringDateFrom &&
+            r.recordDate <= monitoringDateTo
+        ).length
+      );
+      setMonitoringSeq((n) => n + 1);
+    } catch (e) {
+      setMonitoringError(e instanceof Error ? e.message : "予期しないエラーが発生しました。");
+      setMonitoringDraft(null);
+    } finally {
+      setMonitoringLoading(false);
+    }
+  }
+
+  function handlePrintMonitoring() {
+    setPrintTarget("monitoring");
+    window.print();
+  }
+
+  function copyMonitoringField(key: string, btn: HTMLButtonElement) {
+    const value = monitoringFieldRefs.current[key]?.textContent?.trim() ?? "";
     const original = btn.textContent;
     const reset = (text: string, copied: boolean) => {
       btn.textContent = text;
@@ -563,7 +680,7 @@ export default function Home() {
   }
 
   return (
-    <div className={styles.wrap}>
+    <div className={styles.wrap} data-print-target={printTarget}>
       <header className={styles.masthead + " " + styles.noPrint}>
         <div>
           <p className={styles.eyebrow}>PoC Prototype · 本番構成</p>
@@ -715,7 +832,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className={styles.panel}>
+        <section className={styles.panel + " " + styles.recordPrintArea}>
           <div className={styles.panelHead + " " + styles.noPrint}>
             <span className={styles.panelTitle}>2. AIアウトプット</span>
             <span className={styles.panelSub}>Output · 6項目</span>
@@ -965,6 +1082,302 @@ export default function Home() {
           </button>
         </form>
         {inviteNotice && <p className={styles.saveFlash} style={{ marginTop: 8 }}>{inviteNotice}</p>}
+      </section>
+
+      <section className={styles.panel + " " + styles.monitoringPrintArea} style={{ marginTop: 32 }}>
+        <div className={styles.panelHead + " " + styles.noPrint}>
+          <span className={styles.panelTitle}>4. 個別支援計画モニタリング(下書き)</span>
+          <span className={styles.panelSub}>Monitoring Draft</span>
+        </div>
+
+        <p className={styles.inputNotice + " " + styles.noPrint} style={{ margin: "0 0 12px" }}>
+          ここで作れるのは<strong>下書き</strong>です。相談支援事業所が区へ提出する「モニタリング結果報告書」とは別物です。内容を確認・修正のうえ、貴施設の様式へ転記してご利用ください。
+        </p>
+
+        <div className={styles.saveBar + " " + styles.noPrint} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+          <select
+            className={styles.labelInput}
+            value={monitoringChildId}
+            onChange={(e) => setMonitoringChildId(e.target.value)}
+            aria-label="モニタリング対象児童"
+          >
+            <option value="">対象児童を選択…</option>
+            {children.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nickname}({gradeLabel(c.enrollmentYear)})
+              </option>
+            ))}
+          </select>
+          <input
+            className={styles.labelInput}
+            type="date"
+            value={monitoringDateFrom}
+            onChange={(e) => setMonitoringDateFrom(e.target.value)}
+            aria-label="対象期間の開始日"
+            title="対象期間の開始日"
+          />
+          <span aria-hidden="true">〜</span>
+          <input
+            className={styles.labelInput}
+            type="date"
+            value={monitoringDateTo}
+            onChange={(e) => setMonitoringDateTo(e.target.value)}
+            aria-label="対象期間の終了日"
+            title="対象期間の終了日"
+          />
+        </div>
+
+        <div className={styles.saveBar + " " + styles.noPrint} style={{ marginTop: 10, paddingTop: 0, borderTop: "none" }}>
+          <input
+            className={styles.labelInput}
+            type="text"
+            value={monitoringPlanRef}
+            onChange={(e) => setMonitoringPlanRef(e.target.value)}
+            placeholder="対象計画(例: 2026年4月作成の個別支援計画。任意)"
+            aria-label="対象計画"
+          />
+          <input
+            className={styles.labelInput}
+            type="date"
+            value={monitoringImplementedAt}
+            onChange={(e) => setMonitoringImplementedAt(e.target.value)}
+            aria-label="モニタリング実施日"
+            title="モニタリング実施日"
+          />
+        </div>
+
+        <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: "10px 0 6px" }}>
+          支援目標(個別支援計画の目標行)を入力してください。個別支援計画そのものを保存する機能はまだ無いため、生成のたびに入力が必要です。
+        </p>
+        {monitoringGoals.map((g, i) => (
+          <div
+            key={i}
+            className={styles.saveBar + " " + styles.noPrint}
+            style={{ marginTop: 6, paddingTop: 0, borderTop: "none" }}
+          >
+            <select
+              className={styles.labelInput}
+              style={{ flex: "0 1 150px" }}
+              value={g.category}
+              onChange={(e) => handleGoalChange(i, { category: e.target.value })}
+              aria-label={`支援目標${i + 1}の区分`}
+            >
+              {GOAL_CATEGORY_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              className={styles.labelInput}
+              type="text"
+              value={g.text}
+              onChange={(e) => handleGoalChange(i, { text: e.target.value })}
+              placeholder={`支援目標${i + 1}の内容`}
+              aria-label={`支援目標${i + 1}の内容`}
+            />
+            {monitoringGoals.length > 1 && (
+              <button type="button" className={styles.btn} onClick={() => handleRemoveGoal(i)}>
+                削除
+              </button>
+            )}
+          </div>
+        ))}
+        <div className={styles.inputTools + " " + styles.noPrint} style={{ marginTop: 6, marginBottom: 0 }}>
+          <button type="button" className={styles.btn} onClick={handleAddGoal}>
+            + 目標を追加
+          </button>
+          <button
+            type="button"
+            className={styles.btn + " " + styles.btnPrimary}
+            onClick={handleGenerateMonitoring}
+            disabled={monitoringLoading || !monitoringChildId || monitoringGoals.every((g) => !g.text.trim())}
+            title={!monitoringChildId ? "先に対象児童を選択してください" : undefined}
+          >
+            {monitoringLoading ? "生成中…" : "モニタリング下書きを生成"}
+          </button>
+        </div>
+
+        {monitoringError && (
+          <div className={styles.errorCallout + " " + styles.noPrint} style={{ marginTop: 14 }}>
+            ⚠ {monitoringError}
+          </div>
+        )}
+        {monitoringLoading && (
+          <div className={styles.thinking}>
+            <span className={styles.spinner} />
+            gpt-4o-mini が記録を読み込み、モニタリング下書きを作成しています…
+          </div>
+        )}
+
+        {!monitoringLoading && monitoringDraft && (
+          <>
+            <div className={styles.printHeader}>
+              <h2>個別支援計画モニタリング(下書き)</h2>
+              <p>
+                対象児童: {children.find((c) => c.id === monitoringChildId)?.nickname ?? "?"} ／ 対象計画:{" "}
+                {monitoringPlanRef || "(未記入)"} ／ 実施日: {monitoringImplementedAt} ／ 出力日時: {printedAt}
+              </p>
+            </div>
+
+            <p className={styles.archiveNote + " " + styles.noPrint} style={{ margin: "12px 0 12px" }}>
+              対象期間 {monitoringDateFrom}〜{monitoringDateTo}・参照記録 {monitoringRecordCount}件(同じ児童・期間の記録本文は「3. 保存した記録」で見返せます)
+            </p>
+
+            <div key={monitoringSeq + "-interview"} className={styles.field}>
+              <div className={styles.fieldHead}>
+                <span className={styles.fieldName}>面接の要点</span>
+                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                  <span className={styles.badge + " " + styles.badgeReview}>要職員入力</span>
+                  <button
+                    type="button"
+                    className={styles.btn + " " + styles.copyBtn}
+                    onClick={(e) => copyMonitoringField("interview", e.currentTarget)}
+                  >
+                    📋 コピー
+                  </button>
+                </div>
+              </div>
+              <div
+                ref={(el) => {
+                  monitoringFieldRefs.current["interview"] = el;
+                }}
+                className={styles.fieldBody + " " + styles.fieldBodyManual}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="true"
+                aria-label="面接の要点(職員が入力)"
+                data-placeholder="実施した保護者・本人面接の日時・内容を記入してください(AIは生成しません)"
+              />
+            </div>
+
+            {monitoringDraft.goalEvaluations.map((g, i) => (
+              <div key={monitoringSeq + "-goal-" + i} className={styles.field}>
+                <div className={styles.fieldHead}>
+                  <span className={styles.fieldName}>
+                    支援目標{i + 1}: {g.goalText}
+                  </span>
+                  <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                    <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
+                    <button
+                      type="button"
+                      className={styles.btn + " " + styles.copyBtn}
+                      onClick={(e) => copyMonitoringField("goal-" + i, e.currentTarget)}
+                    >
+                      📋 コピー
+                    </button>
+                  </div>
+                </div>
+                <div
+                  ref={(el) => {
+                    monitoringFieldRefs.current["goal-" + i] = el;
+                  }}
+                  className={styles.fieldBody}
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label={`支援目標${i + 1}の実施状況・達成評価`}
+                >
+                  {g.evaluation}
+                </div>
+              </div>
+            ))}
+
+            <div key={monitoringSeq + "-newIssues"} className={styles.field}>
+              <div className={styles.fieldHead}>
+                <span className={styles.fieldName}>新たな課題</span>
+                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                  <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
+                  <button
+                    type="button"
+                    className={styles.btn + " " + styles.copyBtn}
+                    onClick={(e) => copyMonitoringField("newIssues", e.currentTarget)}
+                  >
+                    📋 コピー
+                  </button>
+                </div>
+              </div>
+              <div
+                ref={(el) => {
+                  monitoringFieldRefs.current["newIssues"] = el;
+                }}
+                className={styles.fieldBody}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="true"
+                aria-label="新たな課題"
+              >
+                {monitoringDraft.newIssues}
+              </div>
+            </div>
+
+            <div key={monitoringSeq + "-changeDecision"} className={styles.field}>
+              <div className={styles.fieldHead}>
+                <span className={styles.fieldName}>変更要否と判断理由</span>
+                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                  <span className={styles.badge + " " + styles.badgeReview}>要職員入力</span>
+                  <button
+                    type="button"
+                    className={styles.btn + " " + styles.copyBtn}
+                    onClick={(e) => copyMonitoringField("changeDecision", e.currentTarget)}
+                  >
+                    📋 コピー
+                  </button>
+                </div>
+              </div>
+              <div
+                ref={(el) => {
+                  monitoringFieldRefs.current["changeDecision"] = el;
+                }}
+                className={styles.fieldBody + " " + styles.fieldBodyManual}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="true"
+                aria-label="変更要否と判断理由(職員が入力)"
+                data-placeholder="計画変更の要否・検討日・判断理由を記入してください(AIは生成しません)"
+              />
+            </div>
+
+            <div key={monitoringSeq + "-nextProposal"} className={styles.field}>
+              <div className={styles.fieldHead}>
+                <span className={styles.fieldName}>次期提案</span>
+                <div className={styles.fieldHeadRight + " " + styles.noPrint}>
+                  <span className={styles.badge + " " + styles.badgeAuto}>自動生成</span>
+                  <button
+                    type="button"
+                    className={styles.btn + " " + styles.copyBtn}
+                    onClick={(e) => copyMonitoringField("nextProposal", e.currentTarget)}
+                  >
+                    📋 コピー
+                  </button>
+                </div>
+              </div>
+              <div
+                ref={(el) => {
+                  monitoringFieldRefs.current["nextProposal"] = el;
+                }}
+                className={styles.fieldBody}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="true"
+                aria-label="次期提案"
+              >
+                {monitoringDraft.nextProposal}
+              </div>
+            </div>
+
+            <div className={styles.saveBar + " " + styles.noPrint}>
+              <button type="button" className={styles.btn} onClick={handlePrintMonitoring}>
+                🖨 印刷 / PDF出力
+              </button>
+            </div>
+          </>
+        )}
       </section>
 
       {/* 毎日使う画面なので、説明は作業導線(入力→出力→保存)の下に置く。 */}

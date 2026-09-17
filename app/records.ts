@@ -36,6 +36,31 @@ export async function loadRecords(supabase: Client, facilityId: string): Promise
   return { ok: true, value: valid };
 }
 
+/**
+ * 施設内の、特定の児童・期間の記録を記録対象日の昇順(時系列順)で読み出す。
+ * RLSにより自分が所属する施設の分しか返らない。モニタリング下書き生成(/api/monitoring)で使う。
+ */
+export async function loadRecordsForChild(
+  supabase: Client,
+  facilityId: string,
+  childId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<RecordsResult<SavedRecord[]>> {
+  const { data, error } = await supabase
+    .from("records")
+    .select("id, facility_id, created_by, label, source_text, record, child_id, record_date, saved_at, updated_at")
+    .eq("facility_id", facilityId)
+    .eq("child_id", childId)
+    .gte("record_date", dateFrom)
+    .lte("record_date", dateTo)
+    .order("record_date", { ascending: true });
+
+  if (error) return { ok: false, reason: error.message };
+  const valid = (data ?? []).map(rowToSavedRecord).filter((r): r is SavedRecord => r !== null);
+  return { ok: true, value: valid };
+}
+
 /** 1件を保存する(既存IDなら上書き)。 */
 export async function saveRecord(
   supabase: Client,

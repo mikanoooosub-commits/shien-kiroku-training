@@ -386,6 +386,20 @@
   font-style: italic;
 }
 
+/* AIが生成しない欄(モニタリング下書きの「面接の要点」「変更要否と判断理由」)用のプレースホルダ。
+   .fieldBody:empty::before と同じ詳細度なので、後に書かれた方(このルール)が優先される。 */
+.fieldBodyManual:empty::before {
+  content: attr(data-placeholder);
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* セクション2(記録)・セクション4(モニタリング下書き)のどちらを印刷するかを切り替えるためのマーカー。
+   見た目のスタイルは持たず、@media print 内の表示切り替えにのみ使う。 */
+.recordPrintArea,
+.monitoringPrintArea {
+}
+
 .uncertainCallout {
   background: var(--flag-soft);
   border-left: 3px solid var(--flag);
@@ -636,5 +650,13 @@
     border-left: 3px solid #333333;
     color: #000000;
     font-size: 11.5px;
+  }
+
+  /* 印刷対象として選ばれていない側(record/monitoring)は丸ごと非表示にする。 */
+  [data-print-target="record"] .monitoringPrintArea {
+    display: none !important;
+  }
+  [data-print-target="monitoring"] .recordPrintArea {
+    display: none !important;
   }
 }
