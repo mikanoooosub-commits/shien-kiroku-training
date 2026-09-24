@@ -27,9 +27,9 @@ Supabaseの無料枠を別案件のPoCに使うため。**今回はSupabaseの�
 - コードの最終コミット: `b9de859`(2026-09-17)。ドキュメント整理のコミットが以降に追加される場合がある(`git log` で確認)。
 - 本番URL: https://shien-kiroku-training.vercel.app(Supabase削除後はログインできない・エラーになる。これは想定内)
 - Supabaseプロジェクト: Free プラン、Tokyoリージョン推奨で作成(実際のリージョン・ref は削除前にダッシュボードで確認し、下に追記する)
-  - 削除前の記録欄: プロジェクトref: `____` / リージョン: `____` / プラン: `____`
-  - Auth設定(削除前に確認して記録): Confirm email = `____` / Allow new users to sign up = `____`
-    (`docs/security-notes.md` §2 に「検証のため一時的にオン」とあり、オフに戻した記録が無い。再作成時は**オフ**で始めること)
+  - 削除前の記録(2026-09-24、ダッシュボードのスクリーンショットより): プロジェクト名 `shien-kiroku-training` / プロジェクトID(ref) `tvebbuvsgsesjdmzkvrb` / リージョン `ap-northeast-1`(Northeast Asia, Tokyo) / プラン: 未確認
+  - Auth設定(User Signups、同日確認): Allow new users to sign up = **オフ** / Allow manual linking = オフ / Allow anonymous sign-ins = オフ / Confirm email = **オフ**
+    (サインアップはオフに戻っていた。`docs/security-notes.md` §2 の運用メモは対応済み。Confirm emailは開発用にオフだったので、再作成時に必要ならオンにする)
 - 削除されるデータ: ダミー/仮名のテストデータのみ(施設C・施設E、児童、記録、RLS検証用アカウント)。実データは扱っていない(`CLAUDE.md` データ取扱い方針)。
 - 定期実行ジョブ(cron / GitHub Actions / Edge Functions)は**存在しない**。停止対象は上の表のみ。
 
