@@ -18,7 +18,7 @@ Supabaseの無料枠を別案件のPoCに使うため。**今回はSupabaseの�
 | 対象 | 停止内容 | 実施 | 日付 |
 |---|---|---|---|
 | OpenAI | **今回は対象外**(キーは有効のまま)。ただしSupabase削除後は誰もログインできず、`proxy.ts` が未ログインの `/api/*` を401にするため、課金経路は実質閉じる。より確実にするなら後日Revoke | — | — |
-| Supabase | 必要ならバックアップ取得後、プロジェクトを**削除**(ユーザーがダッシュボードで実施) | [ ] | |
+| Supabase | バックアップ(Table EditorからCSV出力)取得後、プロジェクトを**削除**(ユーザーがダッシュボードで実施) | [x] | 2026-09-24 |
 | Vercel | 変更なし(プロジェクト・環境変数とも残す) | — | — |
 | GitHub | 変更なし(`mikanoooosub-commits/shien-kiroku-training` の `main`) | — | — |
 
@@ -78,6 +78,8 @@ DBスキーマの一次情報は `supabase/schema.sql`(冪等)。戻しSQLは `s
 6. RLS検証用の第三者アカウント(旧: 施設E)は削除で失われるので、必要なら作り直す(§5)。
 
 Freeプランには日次バックアップが無い(`supabase/rollback.sql` 冒頭の注記)。データを残したい場合は削除前にCSVエクスポートしておく。
+
+2026-09-24の削除前に、Table EditorからCSVを出力済み(保存場所はリポジトリ外のローカル。パスはここに書かない)。CSVからの復元が必要になったら、再作成後にTable EditorのImport(CSV)を使う。外部キーの都合上、`facilities` → `facility_members` / `children` → `records` の順に入れる。ただし `auth.users` は復元されないため、`facility_members.user_id` は再作成したユーザーのIDと合わない。実質的にはテストデータとして作り直す方が早い。
 
 ---
 
