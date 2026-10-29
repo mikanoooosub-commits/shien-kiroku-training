@@ -1582,16 +1582,13 @@ export default function Home() {
           </p>
           <p>
             <strong>まだ検証できていないこと</strong>:
-            児童の健康情報等を扱うため、本番導入前に個人情報保護・データ送信先(OpenAI社・Supabase社)の要件確認が必要です(<code>poc-spec.html</code> §7)。PoC期間中はダミーデータで検証します。
+            児童の健康情報等を扱うため、本番導入前に個人情報保護・データ送信先(OpenAI社・Supabase社)の要件確認が必要です。PoC期間中はダミーデータで検証します。
           </p>
         </div>
       </div>
 
       <footer className={styles.pageFooter + " " + styles.noPrint}>
         <p>各項目は生成後も直接クリックして編集でき、項目ごとにコピーして既存の記録(紙・カイポケ・HUG等)へ貼り付けられます。</p>
-        <p>
-          分類ロジック・カテゴリ定義の根拠: <code>poc-spec.html</code> §1〜2、競合ソフトの機能ギャップは <code>sources.competitor-tools.md</code> を参照。
-        </p>
       </footer>
     </div>
   );

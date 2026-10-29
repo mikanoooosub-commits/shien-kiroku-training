@@ -1,5 +1,3 @@
-@AGENTS.md
-
 # セキュリティ方針(AI記録支援 PoC)
 
 **ルールには理由を併記する**(根拠のない規約は守られない)。詳細な議論・根拠・宿題は `docs/security-notes.md` を参照。
@@ -37,4 +35,4 @@
 
 ## 関連資料
 
-- 「個別支援計画モニタリング」下書き生成機能(`app/api/monitoring/`)の様式調査根拠: `docs/sources.monitoring-format.md`(リダイレクト。実体は本リポジトリ外の `research/itabashi-2026-08/sources.monitoring-format.md`)。
+- 「個別支援計画モニタリング」下書き生成機能(`app/api/monitoring/`)の様式調査の要点: `docs/sources.monitoring-format.md`。

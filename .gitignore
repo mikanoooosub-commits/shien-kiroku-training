@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Next.js が `next dev` 実行時に自動生成するエージェント向けファイル(追跡しない)
+AGENTS.md
