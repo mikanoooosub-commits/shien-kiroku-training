@@ -1,8 +1,10 @@
 # AI記録支援(本番PoC)
 
-> **⚠ このPoCは現在停止中です(2026-09-24〜)。**
-> Supabaseプロジェクトの削除により、本番URLではログイン・生成ができません(コードとドキュメントは保管済み)。OpenAIキーとVercelプロジェクトは残しています。
+> **⚠ 本番アプリ(認証・施設共有・保存)は現在停止中です(2026-09-24〜)。**
+> Supabaseプロジェクトの削除により、ログイン・保存を伴う本番機能は動きません(コードとドキュメントは保管済み)。
 > 再開する場合は **[docs/resume-runbook.md](docs/resume-runbook.md)** の手順に従ってください(環境変数・Supabase再作成・Vercel再デプロイ・動作確認)。
+>
+> **ただし、中核機能「AIが6項目に振り分ける」だけは DBなしで動きます。** `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` を設定せず `OPENAI_API_KEY` だけで起動すると、`proxy.ts` がDBなしモードになり、保存なし・ログインなしの体験版 **`/demo`** だけを提供します(`/` や `/login` は自動的に `/demo` へ誘導)。詳細は下記「DBなし体験版(/demo)」。
 
 板橋区の小規模オーナー系放課後等デイサービス事業者向けPoC。職員の自由入力・音声メモを、生成AI(OpenAI `gpt-4o-mini`)が6項目(出欠・入退室/健康面/活動内容/特記事項/連絡事項/引き継ぎ)の構造化ドラフトに変換する。記録は施設単位でスタッフ間に共有され、Supabase(Auth + Postgres + RLS)に保存する。
 
@@ -52,6 +54,30 @@
 - メール+パスワードでログイン。記録は**施設単位**でスタッフ間に共有され、Supabaseに保存される(RLSにより施設外からは見えない)。
 - 施設に既存メンバーを招待できる(サインアップ済みのメールアドレスのみ)。
 - 記録を印刷・PDF出力できる(ブラウザの「PDFとして保存」)。画面用のボタン・バッジは印刷されない。
+
+## DBなし体験版(`/demo`)
+
+Supabase を使わず、「自由入力 → AIが6項目に振り分ける」だけを保存・ログインなしで試せる単独ページ。Supabase停止中でも OpenAI キーだけで動く。
+
+**ローカルで動かす**
+
+```bash
+cp .env.local.example .env.local   # OPENAI_API_KEY だけ設定(Supabase の2行は空のまま)
+npm install
+npm run dev
+```
+
+[http://localhost:3000/demo](http://localhost:3000/demo) を開く(`/` や `/login` を開いても自動で `/demo` に移動する)。
+
+**仕組み**
+
+- `proxy.ts` は `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` が未設定だと「DBなしデモモード」になり、`/demo` と `/api/*` だけ通し、それ以外は `/demo` へ誘導する。
+- `/demo`(`app/demo/page.tsx`)は Supabase を一切 import せず、`/api/structure`(OpenAI のみ・Supabase非依存)だけを呼ぶ。本番アプリ(`/` = `app/page.tsx`)とは別ファイルなので、Supabase を再設定すれば本番アプリがそのまま復活する(デモは影響しない)。
+
+**公開デプロイする場合の注意**
+
+- Vercel 側の `NEXT_PUBLIC_SUPABASE_*` を**削除**すると、公開URLがそのまま `/demo`(体験版)になる。`OPENAI_API_KEY` だけ残す。
+- `/api/structure` は認証なしで誰でも叩けるため、**OpenAI 側で月額の上限予算を必ず設定する**(公開URLが拡散した場合の従量課金の天井)。これがDBなし公開デモの唯一の実質的なリスク。
 
 ## 設計上の判断
 

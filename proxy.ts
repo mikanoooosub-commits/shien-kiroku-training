@@ -14,8 +14,17 @@ export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    // 環境変数未設定時はそのまま通す。各ページ・Route Handler側でエラーメッセージを出す。
-    return response;
+    // DBなしデモモード: Supabase未設定(停止中など)。認証・保存・施設共有は提供できないため、
+    // 「AIが6項目に振り分ける」体験だけを `/demo` で提供する。
+    // - `/demo` と `/api/*`(実際に使うのは `/api/structure`、OpenAIのみ・Supabase非依存)は通す。
+    // - それ以外(`/` や `/login` など、Supabaseクライアントを生成して実行時に落ちるページ)は `/demo` へ誘導する。
+    const pathname = request.nextUrl.pathname;
+    if (pathname === "/demo" || pathname.startsWith("/demo/") || pathname.startsWith("/api/")) {
+      return response;
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/demo";
+    return NextResponse.redirect(url);
   }
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
