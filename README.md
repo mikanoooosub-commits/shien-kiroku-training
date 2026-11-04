@@ -57,27 +57,46 @@
 
 ## DBなし体験版(`/demo`)
 
-Supabase を使わず、「自由入力 → AIが6項目に振り分ける」だけを保存・ログインなしで試せる単独ページ。Supabase停止中でも OpenAI キーだけで動く。
+Supabase を使わず、「自由入力 → AIが6項目に振り分ける」だけを試せる単独ページ。Supabase停止中でも OpenAI キーだけで動く。公開URLがそのまま叩かれないよう、**合言葉ひとつのログイン**(つもる `tsumoru-poc` の簡易ログインを移植・デモモード限定)で守る。
 
 **ローカルで動かす**
 
-```bash
-cp .env.local.example .env.local   # OPENAI_API_KEY だけ設定(Supabase の2行は空のまま)
-npm install
-npm run dev
-```
+1. 環境変数を用意
 
-[http://localhost:3000/demo](http://localhost:3000/demo) を開く(`/` や `/login` を開いても自動で `/demo` に移動する)。
+   ```bash
+   cp .env.local.example .env.local
+   ```
+
+   `OPENAI_API_KEY` を設定し、`NEXT_PUBLIC_SUPABASE_*` の2行は**空のまま**にする(空=DBなしデモモード)。
+
+2. 合言葉のハッシュと署名鍵を作って `.env.local` に入れる
+
+   ```bash
+   npx tsx scripts/hash-password.ts   # 合言葉(12文字以上)を2回入力 → scrypt:... の1行が出る → DEMO_PASSWORD_HASH へ
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"   # → DEMO_SESSION_SECRET へ
+   ```
+
+   (合言葉そのものはどこにも保存されない。`DEMO_PASSWORD_HASH` が未設定だとログイン画面が「設定なし」になり誰も入れない=安全側。)
+
+3. 起動して開く
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+   [http://localhost:3000/demo](http://localhost:3000/demo) を開く → 合言葉ログイン → 体験ページ(`/` や `/login` を開いても `/demo` 系へ誘導)。
 
 **仕組み**
 
-- `proxy.ts` は `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` が未設定だと「DBなしデモモード」になり、`/demo` と `/api/*` だけ通し、それ以外は `/demo` へ誘導する。
-- `/demo`(`app/demo/page.tsx`)は Supabase を一切 import せず、`/api/structure`(OpenAI のみ・Supabase非依存)だけを呼ぶ。本番アプリ(`/` = `app/page.tsx`)とは別ファイルなので、Supabase を再設定すれば本番アプリがそのまま復活する(デモは影響しない)。
+- `proxy.ts` は `NEXT_PUBLIC_SUPABASE_*` が未設定だと「DBなしデモモード」になり、合言葉セッションがあれば `/demo` と `/api/*` を通し、無ければ `/demo/login` へ誘導(APIは401)。`/demo/login` は常に開ける。
+- 合言葉ログインの中核は `app/demo-session.ts` / `app/demo-password-hash.ts` / `app/demo-auth.ts`(scrypt・署名cookie・レート制限・fail-closed)。守りは2段で、入口(proxy)に加え `/demo` ページ(`requireDemoPage`)と `/api/structure` の先頭でもセッションを確かめる。
+- `/demo`(`app/demo/DemoClient.tsx`)は Supabase を一切 import せず `/api/structure`(OpenAI のみ)だけを呼ぶ。本番アプリ(`/` = `app/page.tsx`)とは別ファイルなので、Supabase を再設定すれば本番アプリがそのまま復活する(デモ・合言葉ゲートは本番モードでは無効)。
 
-**公開デプロイする場合の注意**
+**公開デプロイする場合**
 
-- Vercel 側の `NEXT_PUBLIC_SUPABASE_*` を**削除**すると、公開URLがそのまま `/demo`(体験版)になる。`OPENAI_API_KEY` だけ残す。
-- `/api/structure` は認証なしで誰でも叩けるため、**OpenAI 側で月額の上限予算を必ず設定する**(公開URLが拡散した場合の従量課金の天井)。これがDBなし公開デモの唯一の実質的なリスク。
+- Vercel の環境変数から `NEXT_PUBLIC_SUPABASE_*` を**削除**し、`OPENAI_API_KEY` ・ `DEMO_PASSWORD_HASH` ・ `DEMO_SESSION_SECRET` を Production に入れてから push する(順番を逆にすると本番が「誰も入れない」画面になる=安全側)。公開URLは合言葉ログインの内側になるので、Vercel の Deployment Protection はオフでよい(iPad など任意の端末で合言葉だけで開ける)。
+- 合言葉ログインがあるので URL だけでは `/api/structure` を叩けないが、念のため **OpenAI 側の月額上限予算も設定**しておく。
 
 ## 設計上の判断
 

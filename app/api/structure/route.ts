@@ -2,6 +2,8 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { RecordSchema } from "../../record";
+import { isDemoMode } from "../../demo-session";
+import { hasSession } from "../../demo-auth";
 
 export const runtime = "nodejs";
 
@@ -79,6 +81,12 @@ async function buildContinuityNote(
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // DBなしデモモードのときは、合言葉ログインのセッションを必須にする(proxyの入口チェックに加えた2段目の守り)。
+  // 本番モード(Supabase設定あり)では proxy のSupabase認証が守るため、ここは素通しする。
+  if (isDemoMode() && !(await hasSession())) {
+    return Response.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return Response.json(

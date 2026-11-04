@@ -52,7 +52,10 @@ flowchart LR
 | `app/record.ts` | `RecordSchema`(zod)・`CATEGORY_META`・保存レコード形式(`SavedRecordSchema`)の唯一の定義。個別支援計画モニタリング下書き(`/api/monitoring`)の`MonitoringGoalInputSchema`・`MonitoringDraftSchema`・`MonitoringApiResponseSchema`もここに集約する。 | 共有(サーバー/クライアント両方からimport) |
 | `app/page.tsx` | 施設作成前の案内画面を除き、4つのタブ(`activeTab` state)に分けて表示する: 「書く」(入力・AI呼び出し・6項目の表示/直接編集/コピー・保存・印刷)、「見る」(保存済み記録の一覧・児童/記録日による絞り込み・選択した記録の読み取り専用プレビュー・印刷)、「モニタリング」(個別支援計画モニタリング下書き生成UI)、「管理」(児童マスタ登録・施設スタッフ招待)。非アクティブなタブは条件付きレンダリングで消さず、`hidden`属性で常時マウントしたまま非表示にする(6項目・モニタリング5項目の入力欄が`contentEditable`でReact state化されていないため、アンマウントすると未保存の編集内容が失われることを避ける設計)。印刷はこの「非アクティブタブは常にhidden」という性質に任せており、画面に見えているタブの内容だけがそのまま印刷される(旧`printTarget` stateは廃止)。機械チェック(`findIncidentMismatches`)、`force-dynamic`指定(セッション依存でユーザー間共有できる静的コンテンツを持たないため)は従来どおり。 | クライアント(ブラウザ) |
 | `app/login/page.tsx` | メール+パスワードでのログイン・新規登録フォーム。 | クライアント(ブラウザ) |
-| `app/demo/page.tsx` | DBなし体験版(CHANGE-024)。「自由入力 → AIが6項目に振り分ける」だけを保存・ログインなしで提供する単独ページ。Supabaseを一切importせず、`/api/structure`(OpenAIのみ)だけを呼ぶ。Supabase停止中(環境変数未設定)でもOpenAIキーだけで動く。`app/page.tsx`の「書く」タブの機能の一部を、停止中の本番アプリから独立させるため自己完結で持つ。 | クライアント(ブラウザ) |
+| `app/demo/page.tsx` / `app/demo/DemoClient.tsx` | DBなし体験版(CHANGE-024・025)。「自由入力 → AIが6項目に振り分ける」だけを提供する単独ページ。`page.tsx`はサーバーコンポーネントで、合言葉ログインのセッションを`requireDemoPage()`で確かめてから(守り2段目)`DemoClient.tsx`(クライアントUI)を描画する。`DemoClient`はSupabaseを一切importせず`/api/structure`(OpenAIのみ)だけを呼ぶ。Supabase停止中(環境変数未設定)でもOpenAIキーだけで動く。本番アプリ(`app/page.tsx`)から独立させるため自己完結で持つ。 | サーバー(page)+クライアント(DemoClient) |
+| `app/demo-session.ts` / `app/demo-password-hash.ts` / `app/demo-auth.ts` | DBなし体験版の合言葉ログイン(CHANGE-025、つもる`tsumoru-poc`から移植)。`demo-password-hash`=scryptのハッシュ生成・照合(`DEMO_PASSWORD_HASH`)、`demo-session`=HMAC署名cookieの作成/検証・レート制限・`isDemoMode()`(`DEMO_SESSION_SECRET`)、`demo-auth`=cookieストア操作とページ用`requireDemoPage()`。合言葉そのものは保存せず、設定が無ければfail-closed。 | サーバー(`demo-password-hash`のみスクリプトからも利用) |
+| `app/demo/login/{page,actions,LoginForm}.tsx` | 合言葉ログイン画面(`/demo/login`)。`actions.ts`(Server Action)が`scrypt`照合→署名cookie発行、成功で`/demo`へ。失敗は約1秒待機＋回数制限。 | サーバー(page/actions)+クライアント(LoginForm) |
+| `scripts/hash-password.ts` | `DEMO_PASSWORD_HASH`の1行を作るスクリプト(`npx tsx`)。合言葉は画面に出さず2回入力、ハッシュの1行だけをstdoutに出す(合言葉はファイル・ログ・引数に残さない)。 | Node(Next.jsの外) |
 | `app/supabase-browser.ts` | ブラウザ用Supabaseクライアント(`createBrowserClient`)。anon keyのみ使用。 | クライアント(ブラウザ) |
 | `app/supabase-server.ts` | サーバー用Supabaseクライアント(`createServerClient`)。`app/api/monitoring/route.ts`がブラウザのセッションCookieを転送してSupabaseへ問い合わせる際に使う(`service_role`は使わない。RLSはユーザーのセッションのまま適用される)。 | サーバー |
 | `app/facility.ts` | 所属施設の取得・作成・スタッフ招待(`invite_to_facility` RPC呼び出し)。 | クライアント(ブラウザ) |
@@ -61,7 +64,7 @@ flowchart LR
 | `app/database.types.ts` | `supabase/schema.sql`と対応する手書きのTypeScript型。プロジェクト作成後は`supabase gen types`で生成し直すこと。 | 共有 |
 | `app/api/structure/route.ts` | リクエストをzodで検証し、OpenAI Responses APIを呼び出し、応答を`RecordSchema`で検証して返す。同じファイル内に、直近記録との継続コメントだけを生成する専用の小さい呼び出し(`ContinuityNoteSchema`・`buildContinuityNote()`、CHANGE-012)も持つ。`OPENAI_API_KEY`はここでのみ使用。 | サーバー |
 | `app/api/monitoring/route.ts` | 対象児童・対象期間・支援目標入力を受け取り、`loadRecordsForChild`(`supabase-server.ts`経由、RLS適用)でその期間の蓄積記録を取得し、`responses.parse()`(`MonitoringDraftSchema`)で個別支援計画モニタリングの下書きを生成する。生成結果はDBに保存しない(呼び出しのたびに作る)。`OPENAI_API_KEY`はここでも使用。 | サーバー |
-| `proxy.ts` | 全リクエストでSupabaseセッションを検証・更新。未ログインなら`/login`へリダイレクト、未ログインでの`/api/*`アクセスは401を返す。**Supabase環境変数が未設定の場合は「DBなしデモモード」**(CHANGE-024)になり、認証判定を行わず `/demo` と `/api/*` だけ通し、それ以外は `/demo` へ誘導する(停止中でも体験版だけ動かすため)。 | サーバー(Edge/Nodeランタイム、リクエストの前段) |
+| `proxy.ts` | 全リクエストでSupabaseセッションを検証・更新。未ログインなら`/login`へリダイレクト、未ログインでの`/api/*`アクセスは401を返す。**Supabase環境変数が未設定の場合は「DBなしデモモード」**(CHANGE-024・025)になり、合言葉ログインのセッション(`verifySessionToken`)を見て、あれば`/demo`と`/api/*`を通し、無ければ`/demo/login`へ誘導(APIは401)。`/demo/login`は常に開ける。 | サーバー(Nodeランタイム、リクエストの前段) |
 | `supabase/schema.sql` / `rollback.sql` | `facilities` / `facility_members` / `records` / `children`テーブル、RLSポリシー、招待用RPC(`invite_to_facility`)を定義する冪等なDDL。db-changeスキルの方針に従う。 | Supabase(Postgres) |
 
 ## データフローと信頼境界

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./app/database.types";
+import { DEMO_SESSION_COOKIE, verifySessionToken } from "./app/demo-session";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -14,16 +15,30 @@ export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    // DBなしデモモード: Supabase未設定(停止中など)。認証・保存・施設共有は提供できないため、
-    // 「AIが6項目に振り分ける」体験だけを `/demo` で提供する。
-    // - `/demo` と `/api/*`(実際に使うのは `/api/structure`、OpenAIのみ・Supabase非依存)は通す。
-    // - それ以外(`/` や `/login` など、Supabaseクライアントを生成して実行時に落ちるページ)は `/demo` へ誘導する。
+    // DBなしデモモード: Supabase未設定(停止中など)。認証・保存・施設共有は提供できない。
+    // 「AIが6項目に振り分ける」体験だけを、合言葉ログインの内側で `/demo` で提供する(守り1段目=入口)。
+    // 合言葉ゲートの中核は app/demo-session.ts(つもる tsumoru-poc から移植)。2段目は /demo ページと /api/structure 側で確かめる。
     const pathname = request.nextUrl.pathname;
-    if (pathname === "/demo" || pathname.startsWith("/demo/") || pathname.startsWith("/api/")) {
-      return response;
+    // ログイン画面(とそのServer Action POST)は常に開ける
+    if (pathname === "/demo/login") return response;
+
+    const loggedIn = verifySessionToken(request.cookies.get(DEMO_SESSION_COOKIE)?.value);
+    if (loggedIn) {
+      // ログイン済み: 体験ページとAPI(実際に使うのは `/api/structure`、OpenAIのみ)を通す。それ以外は `/demo` へ。
+      if (pathname === "/demo" || pathname.startsWith("/demo/") || pathname.startsWith("/api/")) {
+        return response;
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = "/demo";
+      return NextResponse.redirect(url);
+    }
+
+    // 未ログイン: APIは401、それ以外(ページ)は合言葉のログイン画面へ。
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
     }
     const url = request.nextUrl.clone();
-    url.pathname = "/demo";
+    url.pathname = "/demo/login";
     return NextResponse.redirect(url);
   }
 
