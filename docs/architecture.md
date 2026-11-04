@@ -9,7 +9,7 @@
 flowchart LR
   subgraph Browser["ブラウザ(スタッフの端末)"]
     Speech["Web Speech API\n(音声認識・Chrome/Edgeのみ)"]
-    UI["app/page.tsx\nタブ(書く/見る/モニタリング/管理)UI"]
+    UI["app/HomeClient.tsx\nタブ(書く/見る/モニタリング/管理)UI"]
     SBClient["@supabase/ssr\ncreateBrowserClient"]
   end
 
@@ -50,7 +50,7 @@ flowchart LR
 | コンポーネント | 役割 | 実行場所 |
 |---|---|---|
 | `app/record.ts` | `RecordSchema`(zod)・`CATEGORY_META`・保存レコード形式(`SavedRecordSchema`)の唯一の定義。個別支援計画モニタリング下書き(`/api/monitoring`)の`MonitoringGoalInputSchema`・`MonitoringDraftSchema`・`MonitoringApiResponseSchema`もここに集約する。 | 共有(サーバー/クライアント両方からimport) |
-| `app/page.tsx` | 施設作成前の案内画面を除き、4つのタブ(`activeTab` state)に分けて表示する: 「書く」(入力・AI呼び出し・6項目の表示/直接編集/コピー・保存・印刷)、「見る」(保存済み記録の一覧・児童/記録日による絞り込み・選択した記録の読み取り専用プレビュー・印刷)、「モニタリング」(個別支援計画モニタリング下書き生成UI)、「管理」(児童マスタ登録・施設スタッフ招待)。非アクティブなタブは条件付きレンダリングで消さず、`hidden`属性で常時マウントしたまま非表示にする(6項目・モニタリング5項目の入力欄が`contentEditable`でReact state化されていないため、アンマウントすると未保存の編集内容が失われることを避ける設計)。印刷はこの「非アクティブタブは常にhidden」という性質に任せており、画面に見えているタブの内容だけがそのまま印刷される(旧`printTarget` stateは廃止)。機械チェック(`findIncidentMismatches`)、`force-dynamic`指定(セッション依存でユーザー間共有できる静的コンテンツを持たないため)は従来どおり。 | クライアント(ブラウザ) |
+| `app/page.tsx`(ラッパ)/ `app/HomeClient.tsx`(UI本体) | 施設作成前の案内画面を除き、4つのタブ(`activeTab` state)に分けて表示する: 「書く」(入力・AI呼び出し・6項目の表示/直接編集/コピー・保存・印刷)、「見る」(保存済み記録の一覧・児童/記録日による絞り込み・選択した記録の読み取り専用プレビュー・印刷)、「モニタリング」(個別支援計画モニタリング下書き生成UI)、「管理」(児童マスタ登録・施設スタッフ招待)。非アクティブなタブは条件付きレンダリングで消さず、`hidden`属性で常時マウントしたまま非表示にする(6項目・モニタリング5項目の入力欄が`contentEditable`でReact state化されていないため、アンマウントすると未保存の編集内容が失われることを避ける設計)。印刷はこの「非アクティブタブは常にhidden」という性質に任せており、画面に見えているタブの内容だけがそのまま印刷される(旧`printTarget` stateは廃止)。機械チェック(`findIncidentMismatches`)は従来どおり。ルート`/`の`force-dynamic`は、UI本体(`HomeClient.tsx`)ではなく`app/page.tsx`(このUIを描画するだけのServer Componentの薄いラッパ)側で宣言する(CHANGE-026): `HomeClient`はrender中(`useState(() => createClient())`)にSupabaseブラウザクライアントを生成するため、Supabase環境変数の無いデモ構成ではビルド時の静的プリレンダリングで例外になりビルドが失敗する。route segment config(`dynamic`)はclient componentでは無視されるのでServer側のラッパに置く。実行時はデモモードでは`proxy.ts`が`/`を`/demo/login`等へ振り替えるため、このUIが実際に描画されるのは通常(Supabase)モードのときだけ。 | クライアント(ブラウザ) |
 | `app/login/page.tsx` | メール+パスワードでのログイン・新規登録フォーム。 | クライアント(ブラウザ) |
 | `app/demo/page.tsx` / `app/demo/DemoClient.tsx` | DBなし体験版(CHANGE-024・025)。「自由入力 → AIが6項目に振り分ける」だけを提供する単独ページ。`page.tsx`はサーバーコンポーネントで、合言葉ログインのセッションを`requireDemoPage()`で確かめてから(守り2段目)`DemoClient.tsx`(クライアントUI)を描画する。`DemoClient`はSupabaseを一切importせず`/api/structure`(OpenAIのみ)だけを呼ぶ。Supabase停止中(環境変数未設定)でもOpenAIキーだけで動く。本番アプリ(`app/page.tsx`)から独立させるため自己完結で持つ。 | サーバー(page)+クライアント(DemoClient) |
 | `app/demo-session.ts` / `app/demo-password-hash.ts` / `app/demo-auth.ts` | DBなし体験版の合言葉ログイン(CHANGE-025、つもる`tsumoru-poc`から移植)。`demo-password-hash`=scryptのハッシュ生成・照合(`DEMO_PASSWORD_HASH`)、`demo-session`=HMAC署名cookieの作成/検証・レート制限・`isDemoMode()`(`DEMO_SESSION_SECRET`)、`demo-auth`=cookieストア操作とページ用`requireDemoPage()`。合言葉そのものは保存せず、設定が無ければfail-closed。 | サーバー(`demo-password-hash`のみスクリプトからも利用) |
@@ -59,7 +59,7 @@ flowchart LR
 | `app/supabase-browser.ts` | ブラウザ用Supabaseクライアント(`createBrowserClient`)。anon keyのみ使用。 | クライアント(ブラウザ) |
 | `app/supabase-server.ts` | サーバー用Supabaseクライアント(`createServerClient`)。`app/api/monitoring/route.ts`がブラウザのセッションCookieを転送してSupabaseへ問い合わせる際に使う(`service_role`は使わない。RLSはユーザーのセッションのまま適用される)。 | サーバー |
 | `app/facility.ts` | 所属施設の取得・作成・スタッフ招待(`invite_to_facility` RPC呼び出し)。 | クライアント(ブラウザ) |
-| `app/records.ts` | 施設の記録一覧取得・保存・削除。DBから読んだ`record`(jsonb)は`RecordSchema`で検証し、壊れた行は読み捨てる。`child_id`(対象児童)・`record_date`(記録対象日)もここで読み書きする。`loadRecordsForChild`は対象児童・期間を指定して記録を取得する関数で、ブラウザ側(`app/page.tsx`)と`app/api/monitoring/route.ts`(サーバー側、`supabase-server.ts`経由)の両方から呼ばれる。 | クライアント(ブラウザ)・サーバー(`/api/monitoring`から) |
+| `app/records.ts` | 施設の記録一覧取得・保存・削除。DBから読んだ`record`(jsonb)は`RecordSchema`で検証し、壊れた行は読み捨てる。`child_id`(対象児童)・`record_date`(記録対象日)もここで読み書きする。`loadRecordsForChild`は対象児童・期間を指定して記録を取得する関数で、ブラウザ側(`app/HomeClient.tsx`)と`app/api/monitoring/route.ts`(サーバー側、`supabase-server.ts`経由)の両方から呼ばれる。 | クライアント(ブラウザ)・サーバー(`/api/monitoring`から) |
 | `app/children.ts` | 施設の児童マスタ(仮名・ニックネームのみ)の一覧取得・登録。学年は保存せず、`gradeLabel()`が入学年度(`enrollment_year`)から都度算出する(生年月日は持たない)。 | クライアント(ブラウザ) |
 | `app/database.types.ts` | `supabase/schema.sql`と対応する手書きのTypeScript型。プロジェクト作成後は`supabase gen types`で生成し直すこと。 | 共有 |
 | `app/api/structure/route.ts` | リクエストをzodで検証し、OpenAI Responses APIを呼び出し、応答を`RecordSchema`で検証して返す。同じファイル内に、直近記録との継続コメントだけを生成する専用の小さい呼び出し(`ContinuityNoteSchema`・`buildContinuityNote()`、CHANGE-012)も持つ。`OPENAI_API_KEY`はここでのみ使用。 | サーバー |
@@ -74,13 +74,13 @@ flowchart LR
 | ブラウザ → `/api/structure`(①②) | `proxy.ts`が未ログインを401で拒否 → `RequestSchema.safeParse`(`route.ts`) | 未ログインでのAI呼び出し(=OpenAI従量課金の踏み台)を防ぐ。クライアント入力自体も信用しない。 |
 | サーバー → OpenAI(③) | — (送信のみ) | **未解決**: 児童の健康情報等を含みうる自由文をOpenAI社に送信する。個人情報保護・越境移転の論点整理は`docs/security-notes.md`参照(本番導入前は未検証)。PoC期間中はダミーデータのみを使う運用でカバーしている。 |
 | OpenAI → サーバー(④) | `zodTextFormat(RecordSchema, ...)` + `response.output_parsed` | 外部APIの応答は形式が保証されていない前提で扱う。 |
-| サーバー → ブラウザ(⑤) | `ApiResponseSchema.safeParse`(`page.tsx`) | 自前のAPIでもネットワークを跨ぐ以上、実際に検証してから使う。 |
+| サーバー → ブラウザ(⑤) | `ApiResponseSchema.safeParse`(`HomeClient.tsx`) | 自前のAPIでもネットワークを跨ぐ以上、実際に検証してから使う。 |
 | ブラウザ ⇄ Supabase(⑥⑦) | **RLS**(`supabase/schema.sql`)。`records`/`facility_members`/`facilities`/`children`はすべて`is_facility_member()`ベースのポリシーで、自分が所属する施設の行しか読み書きできない。読み出し後も`SavedRecordSchema`/`RecordSchema`で再検証。 | Supabaseではクライアントが直接DBを叩く構成のため、**RLSが唯一のアクセス制御**(db-changeスキル原則7)。加えてDBの内容も「壊れていない」保証はない(手動編集・アプリ更新途中など)ため、読み出し時にzodで再検証する。 |
 | ブラウザ → `/api/monitoring`(⑧⑨) | `proxy.ts`が未ログインを401で拒否 → `RequestSchema.safeParse`(`route.ts`) | 未ログインでのAI呼び出しを防ぐ。`childId`・期間・支援目標も信用せずサーバー側で検証する。 |
 | サーバー → Supabase(⑩⑪) | **RLS**。`createServerClient`(`app/supabase-server.ts`)がブラウザのセッションCookieを転送してクエリするため、`service_role`は使わず、ブラウザから直接叩く場合と同じRLSポリシーがそのまま適用される。 | `/api/monitoring`はこの1経路だけ例外的にVercelを経由してSupabaseへアクセスする(モニタリング生成に必要な期間分の記録をサーバー側で組み立てるため)。それでもアクセス制御の主体はRLSであり、Vercel側に独自の認可ロジックは書いていない。 |
 | サーバー → OpenAI(⑫) | — (送信のみ) | 児童の記録本文(複数件の時系列)をOpenAI社に送信する。リスクの性質は「サーバー → OpenAI(③)」の行と同じ(未解決)。 |
 | OpenAI → サーバー(⑬) | `zodTextFormat(MonitoringDraftSchema, ...)` + `response.output_parsed` | 外部APIの応答は形式が保証されていない前提で扱う。支援目標数と`goalEvaluations`件数が一致しない場合は1回だけ取り直す。 |
-| サーバー → ブラウザ(⑭) | `MonitoringApiResponseSchema.safeParse`(`page.tsx`) | 自前のAPIでもネットワークを跨ぐ以上、実際に検証してから使う。 |
+| サーバー → ブラウザ(⑭) | `MonitoringApiResponseSchema.safeParse`(`HomeClient.tsx`) | 自前のAPIでもネットワークを跨ぐ以上、実際に検証してから使う。 |
 
 ## 認証・アクセス範囲の設計
 
